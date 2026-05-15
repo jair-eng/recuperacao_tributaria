@@ -1,12 +1,16 @@
 # ambiente
 .venv/
-.venv_sped_rec/
+.venv_tributario/
 
 .env
 
 # cache python
 __pycache__/
 *.pyc
+*.pyo
+
+# Pytest
+.pytest_cache/
 
 # sistema
 .DS_Store
@@ -17,6 +21,9 @@ logs/
 exports/
 tmp_uploads/
 *.sped
+
+# MySQL / dumps
+*.sql
 
 # IDE
 .idea/
