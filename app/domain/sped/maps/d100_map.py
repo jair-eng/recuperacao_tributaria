@@ -1,0 +1,26 @@
+REG_D100 = "D100"
+
+IDX_D100 = {
+    "ind_oper": 0,
+    "ind_emit": 1,
+    "cod_part": 2,
+    "cod_mod": 3,
+    "cod_sit": 4,
+    "serie": 5,
+    "subserie": 6,
+    "num_doc": 7,
+    "chave_cte": 8,
+    "dt_doc": 9,
+    "dt_a_p": 10,
+    "tp_cte": 11,
+    "chv_cte_ref": 12,
+    "vl_doc": 13,
+    "vl_desc": 14,
+    "ind_frt": 15,
+    "vl_serv": 16,
+    "vl_bc_icms": 17,
+    "vl_icms": 18,
+    "vl_nt": 19,
+    "cod_inf": 20,
+    "cod_cta": 21,
+}

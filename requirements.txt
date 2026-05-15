@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pymysql
+python-dotenv
+pydantic
+python-multipart
+cryptography
+python-docx
+streamlit
+openpyxl
+pandas
+numpy

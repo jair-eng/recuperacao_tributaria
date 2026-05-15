@@ -1,0 +1,23 @@
+# ambiente
+.venv/
+.venv_sped_rec/
+
+.env
+
+# cache python
+__pycache__/
+*.pyc
+
+# sistema
+.DS_Store
+Thumbs.db
+
+# projeto
+logs/
+exports/
+tmp_uploads/
+*.sped
+
+# IDE
+.idea/
+.vscode/
