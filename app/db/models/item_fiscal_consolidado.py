@@ -31,6 +31,7 @@ class ItemFiscalConsolidado(Base):
     cod_part = Column(String(100), nullable=True, index=True)
     participante_nome = Column(String(255), nullable=True)
     participante_doc = Column(String(20), nullable=True, index=True)
+    participante_tipo_doc = Column(String(10), nullable=True, index=True)
 
     num_item = Column(String(20), nullable=True)
     cod_item = Column(String(100), nullable=True, index=True)
