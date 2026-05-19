@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from typing import Any, Dict, List, Tuple
-from app.fiscal.settings_fiscais import CSTS_TRIB_NCUM, CFOPS_ELEGIVEIS, CSTS_NAO_CREDITAVEIS
 from relatorio_oportunidades.foto_oportunidade.aux_funcoes_foto import _digits, _s, _q2, _key_chave_cod_item, \
     _key_chave, _participante, \
     _dec, _key_chave_cod_item_norm, _key_chave_num_item, _eh_pf_doc, _eh_complemento_valor

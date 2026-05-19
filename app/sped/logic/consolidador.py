@@ -1,11 +1,10 @@
 from app.db.models.efd_registro import EfdRegistro
 from app.db.models.efd_revisao import EfdRevisao
 from app.db.models.efd_versao import EfdVersao
-from typing import Any, Iterable, Optional
 
-from app.fiscal.dto import RegistroFiscalDTO
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
-from app.sped.blocoC.c100_utils import salvar_revisao_c100_automatica, patch_c100_totais_imposto
+from app.Legacy.fiscal.dto import RegistroFiscalDTO
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+from app.sped.blocoC.c100_utils import patch_c100_totais_imposto
 from app.sped.blocoC.c170_utils import _parse_linha_sped_to_reg_dados, _parse_sped_float
 from typing import Any, Dict, Optional, List, Tuple
 from sqlalchemy.orm import Session
@@ -13,8 +12,6 @@ import os
 from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func,or_
 import re
-
-from app.sped.utils_cod_cta import resolver_cod_cta_padrao_0500
 
 CPF_RE = re.compile(r"^\d{11}$")
 

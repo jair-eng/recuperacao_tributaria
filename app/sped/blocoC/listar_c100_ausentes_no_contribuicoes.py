@@ -4,11 +4,11 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy.orm import Session
 from app.db.models import NfIcmsBase
 from app.db.models.nf_icms_item import NfIcmsItem
-from app.fiscal.constants import DOM_GERAL
-from app.fiscal.regras.helpers.elegibilidade_dominio import item_cfop_elegivel
-from app.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, COD_SIT_SKIP_CONS
+from app.Legacy.fiscal.constants import DOM_GERAL
+from app.Legacy.fiscal.regras.helpers.elegibilidade_dominio import item_cfop_elegivel
+from app.Legacy.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, COD_SIT_SKIP_CONS
 from app.services.dominio_service import resolver_dominio_por_versao
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes
 from app.icms_ipi.icms_helpers import _campo, _only_digits
 from app.icms_ipi.icms_ipi_funcoes import _eh_c100
 from app.sped.blocoC.c100_utils import montar_linha_c100_de_icms

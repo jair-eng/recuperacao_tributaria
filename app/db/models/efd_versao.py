@@ -1,12 +1,12 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, Text, Enum, CHAR
+from sqlalchemy import Column, Integer, DateTime, Text, Enum, CHAR
 from sqlalchemy.orm import relationship
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.models.base import Base
 from sqlalchemy import String
 
-from app.fiscal.constants import DOMINIOS_VALIDOS
+from app.Legacy.fiscal.constants import DOMINIOS_VALIDOS
 
 
 class EfdVersao(Base):

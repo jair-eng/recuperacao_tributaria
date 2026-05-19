@@ -1,7 +1,7 @@
 from collections import Counter
 
 from typing import Any, Iterable, Optional, List
-from app.fiscal.regras.Diagnostico.insumos.insumos_helpers import _extrair_chaves_c170, _score_natureza, _norm_str,_get_dados_list, _somente_digitos
+from app.Legacy.fiscal.regras.Diagnostico.insumos.insumos_helpers import _extrair_chaves_c170, _score_natureza, _norm_str,_get_dados_list, _somente_digitos
 
 
 

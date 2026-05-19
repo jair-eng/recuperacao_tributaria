@@ -1,12 +1,10 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Dict, List, Tuple, Any,Optional
+from typing import Dict, List, Tuple, Any
 from collections import defaultdict
-from app.db.models import EfdRevisao
 from app.sped.blocoM.m_utils import _fmt_br, _d, _cst2, _clean_sped_line, _reg_of_line, _to_dec
-from sqlalchemy.orm import Session
-from app.fiscal.settings_fiscais import CSTS_RECEITA_M
+from app.Legacy.fiscal.settings_fiscais import CSTS_RECEITA_M
 
 
 

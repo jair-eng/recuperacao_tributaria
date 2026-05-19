@@ -1,5 +1,5 @@
 from app.db.session import SessionLocal
-from app.icms_ipi.icms_ipi_cruzamento_service import cruzar_versao_com_icms_ipi
+from app.legacy_icms_ipi.icms_ipi_cruzamento_service import cruzar_versao_com_icms_ipi
 
 
 def test_cruzamento_icms():

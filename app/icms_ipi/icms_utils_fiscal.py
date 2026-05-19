@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from sqlalchemy.orm import Session
 
 from app.db.models import EfdVersao, EfdArquivo
 from app.db.models.nf_icms_base import NfIcmsBase
 from app.db.models.nf_icms_item import NfIcmsItem
-from app.fiscal.cat_fiscal import CatalogoFiscal
-from app.fiscal.constants import DOM_GERAL, DOM_CAFE, DOM_AGRO, DOM_SUP, DOM_POSTO, DOM_TRANSP, DOM_REVENDA_GAS
-from app.fiscal.ent_cat_fiscal import carregar_catalogo_fiscal
-from app.fiscal.regras.Diagnostico.insumos.lc192_helpers import elegivel_lc192_combustivel
-from app.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, CFOPS_TRANSP_SUBCONTRATACAO, CFOPS_TRANSP_IMOBILIZADO, \
+from app.Legacy.fiscal.cat_fiscal import CatalogoFiscal
+from app.Legacy.fiscal.constants import DOM_GERAL, DOM_CAFE, DOM_AGRO, DOM_SUP, DOM_POSTO, DOM_TRANSP, DOM_REVENDA_GAS
+from app.Legacy.fiscal.ent_cat_fiscal import carregar_catalogo_fiscal
+from app.Legacy.fiscal.regras.Diagnostico.insumos.lc192_helpers import elegivel_lc192_combustivel
+from app.Legacy.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, CFOPS_TRANSP_SUBCONTRATACAO, CFOPS_TRANSP_IMOBILIZADO, \
     CFOPS_POSTO_COMBUSTIVEL, CFOPS_REVENDA_GAS
 from app.icms_ipi.icms_helpers import _only_digits, _norm_str, _match_dominio_transp_catalogo
 from app.services.dominio_service import resolver_dominio_por_versao

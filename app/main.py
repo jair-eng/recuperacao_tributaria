@@ -6,22 +6,22 @@ load_dotenv()
 from fastapi import FastAPI
 from app.api.routes.upload_endpoints import router as upload_router
 from app.api.creditos_endpoints import router as creditos_router
-from app.api.routes.workflow_endpoints import router as workflow_router
+from app.api.legacy_routes.workflow_endpoints import router as workflow_router
 from app.api.versao_resumo_endpoints import router as versao_resumo_router
 from app.api.empresa_resumo_endpoints import router as empresa_resumo_router
 from app.api.export_endpoints import router as export_router
-from app.api.routes.browse_endpoints import router as browse_router
+from app.api.legacy_routes.browse_endpoints import router as browse_router
 from app.api.apontamentos_endpoints import router as apontamentos_router
 from app.db.models.base import Base
 from app.db.session import engine
 from app.api.empresa_endpoints import router as empresa_router
-from app.api.routes.revision_endpoints import router as revision_router
+from app.api.legacy_routes.revision_endpoints import router as revision_router
 import app.db.models.models_all #  ✅ garante que todos os models foram carregados
-from app.api.routes.c170_endpoints import router as c170_router
+from app.api.legacy_routes.c170_endpoints import router as c170_router
 from app.api.routes.icms_ipi_endpoints import router as icms_ipi_router
-from app.api.routes.foto_recuperacao_endpoints import router as foto_recuperacao_router
+from app.api.legacy_routes.foto_recuperacao_endpoints import router as foto_recuperacao_router
 from app.api.routes.dossie import router as dossie_router
-from app.api.routes import manual_endpoints
+from app.api.legacy_routes import manual_endpoints
 import logging
 import sys
 from pathlib import Path

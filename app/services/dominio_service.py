@@ -1,7 +1,6 @@
-from typing import Optional
 from sqlalchemy.orm import Session
 
-from app.fiscal.constants import DOM_GERAL
+from app.Legacy.fiscal.constants import DOM_GERAL
 from app.db.models.efd_versao import EfdVersao
 
 

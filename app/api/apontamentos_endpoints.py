@@ -1,25 +1,23 @@
 from __future__ import annotations
 
 from app.db.models.efd_revisao import EfdRevisao
-from app.fiscal.scanner import FiscalScanner
-from typing import Optional, Literal, List, Dict, Any , Set
-from fastapi import APIRouter, Depends, HTTPException, Query, status , Body
+from app.Legacy.fiscal.scanner import FiscalScanner
+from typing import Optional, Literal, List, Set
+from fastapi import APIRouter, Depends, Query
 from app.db.session import get_db
 from app.db.models import EfdVersao, EfdArquivo
 from app.db.models import EfdApontamento, EfdRegistro
 from sqlalchemy.orm import Session
 from app.api.payloads import ReprocessarSelecaoPayload
 from sqlalchemy import update, or_ , delete, case , Integer, select, func, exists
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import time
-import traceback
 from typing import Any, Dict
 from fastapi import HTTPException, status
 
-from app.icms_ipi.icms_ipi_insercao_notas_service import inserir_notas_icms_ausentes_na_efd
 from app.schemas.workflow import AplicarRevisaoPayload, ApontamentosBatchPayload
-from app.services.apontamento_service import ApontamentoService
-from app.services.revision_service import RevisionService
+from app.legacy_service.apontamento_service import ApontamentoService
+from app.legacy_service.revision_service import RevisionService
 import logging
 
 logger = logging.getLogger(__name__)

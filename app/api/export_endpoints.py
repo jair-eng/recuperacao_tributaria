@@ -5,15 +5,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
 from app.db.session import get_db
-from app.db.models import EfdVersao, EfdArquivo, Empresa
+from app.db.models import EfdVersao, EfdArquivo
 from app.schemas.workflow import ExportZipPayload
-from app.services.apontamentos_export_service import ApontamentosExportService
-from app.services.export_service import exportar_sped
+from app.legacy_service.apontamentos_export_service import ApontamentosExportService
+from app.legacy_service.export_service import exportar_sped
 import zipfile
 import uuid
 from fastapi import Query
 from typing import Dict, Any
-from pydantic import BaseModel
 from typing import List
 from io import BytesIO
 import logging

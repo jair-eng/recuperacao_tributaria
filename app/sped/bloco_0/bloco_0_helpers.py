@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Optional, Any
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.models import EfdRevisao, EfdRegistro
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.sped.revisao_overlay import LinhaLogica
 
 

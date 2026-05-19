@@ -7,7 +7,7 @@ from app.db.models.efd_registro import EfdRegistro
 from app.db.models.efd_revisao import EfdRevisao
 import logging
 
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 
 logger = logging.getLogger(__name__)
 

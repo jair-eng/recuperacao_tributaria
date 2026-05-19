@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import InvalidOperation
 import re
-from typing import Any, Dict, Optional, List
+from typing import Any, Optional
 from decimal import Decimal, ROUND_HALF_UP
 
-from app.fiscal.cat_fiscal import CatalogoFiscal
-from app.fiscal.constants import DOM_AGRO, DOM_GERAL, DOM_CAFE, DOM_TRANSP, DOM_REVENDA_GAS, DOM_POSTO
-from app.fiscal.ent_cat_fiscal import carregar_catalogo_fiscal
-from app.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, TRANSP_NCM_SLUGS, TRANSP_DESC_SLUGS, \
+from app.Legacy.fiscal.cat_fiscal import CatalogoFiscal
+from app.Legacy.fiscal.constants import DOM_AGRO, DOM_GERAL, DOM_CAFE, DOM_TRANSP, DOM_REVENDA_GAS, DOM_POSTO
+from app.Legacy.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, TRANSP_NCM_SLUGS, TRANSP_DESC_SLUGS, \
     grupos_posto_credito_normal
 
 

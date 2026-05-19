@@ -3,14 +3,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
-from app.services.dossie_exportacao_service import gerar_dossie_exportacao_docx_da_pasta
+from app.legacy_service.dossie_exportacao_service import gerar_dossie_exportacao_docx_da_pasta
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db  # ajuste se seu get_db estiver em outro lugar
 from fastapi.responses import FileResponse
-from app.services.dossie_exportacao_service import gerar_dossie_exportacao_docx
+from app.legacy_service.dossie_exportacao_service import gerar_dossie_exportacao_docx
 
 
 router = APIRouter(prefix="/dossie", tags=["Dossiê"])

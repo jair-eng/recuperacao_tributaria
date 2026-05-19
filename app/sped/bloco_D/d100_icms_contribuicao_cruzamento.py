@@ -1,8 +1,8 @@
 from typing import List, Dict, Any
 
 from app.db.models import Empresa
-from app.fiscal.contexto import get_fiscal_db
-from app.fiscal.dto import RegistroFiscalDTO
+from app.Legacy.fiscal.contexto import get_fiscal_db
+from app.Legacy.fiscal.dto import RegistroFiscalDTO
 from app.sped.bloco_D.d100_helpers import obter_base_d100, calcular_credito_presumido,qualificar_prestador_d100
 from app.sped.bloco_D.d100_utils import _to_float_br, _only_digits
 

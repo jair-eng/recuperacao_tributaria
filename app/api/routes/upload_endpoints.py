@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from typing import Optional
 from pydantic import field_validator
-from app.fiscal.constants import DOMINIOS_VALIDOS
+from app.Legacy.fiscal.constants import DOMINIOS_VALIDOS
 from app.services.upload_confirm_service import UploadConfirmService
 from app.services.upload_service import UploadService
 from typing import List , Dict , Any

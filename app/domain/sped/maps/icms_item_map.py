@@ -30,6 +30,7 @@ def montar_mapa_icms_item(db, *, empresa_id: int, periodo: str):
             mapa_num[(chave_nfe, num_item)] = item
 
     return {
+        "itens": itens,
         "full": mapa_full,
         "cod": mapa_cod,
         "num": mapa_num,

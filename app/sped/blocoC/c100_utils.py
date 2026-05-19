@@ -8,7 +8,7 @@ from app.db.models.efd_revisao import EfdRevisao
 from app.db.models.efd_registro import EfdRegistro
 from app.icms_ipi.icms_helpers import _only_digits, fmt_sped_num, _campo
 from app.icms_ipi.icms_ipi_funcoes import _eh_c100
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes
 from app.sped.formatter import formatar_linha
 
 

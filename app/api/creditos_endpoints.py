@@ -3,7 +3,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.services.credito_consolidado_service import CreditoConsolidadoService
+from app.legacy_service.credito_consolidado_service import CreditoConsolidadoService
 
 router = APIRouter(prefix="/creditos", tags=["Créditos"])
 

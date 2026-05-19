@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Dict, List, Tuple
+from decimal import Decimal
+from typing import Any, Dict
 
-from app.fiscal.regras.Diagnostico.insumos.lc192_helpers import eh_periodo_lc192
-from app.fiscal.settings_fiscais import CSTS_TRIB_NCUM, CFOPS_ELEGIVEIS, CSTS_NAO_CREDITAVEIS
+from app.Legacy.fiscal.regras.Diagnostico.insumos.lc192_helpers import eh_periodo_lc192
+from app.Legacy.fiscal.settings_fiscais import CSTS_TRIB_NCUM, CFOPS_ELEGIVEIS, CSTS_NAO_CREDITAVEIS
 from relatorio_oportunidades.foto_oportunidade.aux_funcoes_foto import _digits, _s, _q2
 
 # ============================================================

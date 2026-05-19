@@ -1,10 +1,9 @@
 from __future__ import annotations
 import re
-from typing import Any, Dict, Optional, List, Iterable, Tuple
+from typing import Any, List, Tuple
 
-from app.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_credito_por_dominio
-from app.fiscal.settings_fiscais import CSTS_TRIB_NCUM
-from app.sped.layouts.c170 import LAYOUT_C170
+from app.Legacy.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_credito_por_dominio
+from app.Legacy.fiscal.settings_fiscais import CSTS_TRIB_NCUM
 from dataclasses import dataclass
 from app.sped.layouts.c170 import LAYOUT_C170
 

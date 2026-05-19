@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List
 from sqlalchemy.orm import Session
 
 from app.db.models import EfdRevisao
 from app.db.models.nf_icms_item import NfIcmsItem
-from app.fiscal.constants import DOM_GERAL
+from app.Legacy.fiscal.constants import DOM_GERAL
 from app.icms_ipi.icms_c170_utils import montar_linha_c170_de_icms
 import logging
 

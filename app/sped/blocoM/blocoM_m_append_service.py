@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Dict, List
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
-from app.fiscal.constants import REGS_M_RELEVANTES
+from app.Legacy.fiscal.constants import REGS_M_RELEVANTES
 from app.sped.blocoM.m_utils import _clean_sped_line, _reg_of_line, _fmt_br, _q2, sanitizar_bloco_m
 
 

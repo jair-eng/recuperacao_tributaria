@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List
 from app.config.settings import ALIQUOTA_PIS_PCT, ALIQUOTA_COFINS_PCT
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from app.db.models import NfIcmsItem, EfdRevisao, NfIcmsBase
 from typing import TYPE_CHECKING
 
-from app.fiscal.constants import DOM_TRANSP, DOM_CAFE, DOM_AGRO, DOM_GERAL
-from app.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_credito_por_dominio
+from app.Legacy.fiscal.constants import DOM_GERAL
+from app.Legacy.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_credito_por_dominio
 from app.icms_ipi.icms_helpers import fmt_sped_num, q2, fmt_sped_qtd
 from app.icms_ipi.icms_utils_fiscal import _cfop_elegivel_por_dominio
 from app.services.dominio_service import resolver_dominio_por_versao
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.sped.revisao_overlay import LinhaLogica
 import logging
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from app.icms_ipi.icms_ipi_cruzamento_service import DocCtx
+    from app.legacy_icms_ipi.icms_ipi_cruzamento_service import DocCtx
 
 
 def montar_linha_c170_de_icms(

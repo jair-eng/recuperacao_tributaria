@@ -2,14 +2,12 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, List, Any
 from collections import defaultdict
 from typing import Sequence, Iterable
-from app.db.models import EfdRegistro, EfdApontamento, EfdRevisao
-from app.fiscal.contexto import get_fiscal_db
-from app.fiscal.settings_fiscais import CSTS_RECEITA_NCUM, CSTS_RECEITA_M
+from app.db.models import EfdRegistro, EfdApontamento
+from app.Legacy.fiscal.contexto import get_fiscal_db
+from app.Legacy.fiscal.settings_fiscais import CSTS_RECEITA_NCUM, CSTS_RECEITA_M
 from sqlalchemy.orm import Session
 from collections import Counter
 import re
-
-from app.sped.utils_cod_cta import resolver_cod_cta_padrao_0500
 
 REGS_RECEITA_BLOCO_C = {"C170", "C175", "C185", "C385", "C485", "C495", "C605", "C870", "C880"}
 

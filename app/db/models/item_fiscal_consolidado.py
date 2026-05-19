@@ -66,6 +66,10 @@ class ItemFiscalConsolidado(Base):
     categoria_catalogo = Column(String(100), nullable=True, index=True)
     familias_catalogo = Column(JSON, nullable=True)
 
+    cod_cta_origem = Column(String(50), nullable=True, index=True)
+    cod_cta_confianca = Column(Integer, nullable=True, index=True)
+    cod_cta_justificativa = Column(String(500), nullable=True)
+
     conta_nome = Column(String(255), nullable=True)
     conta_grupo = Column(String(100), nullable=True)
     categoria_ecd = Column(String(100), nullable=True)

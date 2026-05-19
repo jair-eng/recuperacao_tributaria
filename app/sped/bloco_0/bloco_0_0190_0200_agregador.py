@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.models import EfdRevisao, NfIcmsBase, NfIcmsItem, EfdRegistro
 from app.icms_ipi.icms_0150_agregador import resolver_ou_criar_0150_por_cnpj, _buscar_0150_logico_por_cnpj, \
     _buscar_0150_logico_por_cod_part, _fmt_campo, _somente_digitos
 from app.icms_ipi.icms_helpers import _campo
-from app.services.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.sped.bloco_0.bloco_0_helpers import _norm, _norm_upper, _existe_0190_na_versao, _existe_0200_na_versao
 from typing import Dict, List, Optional
 

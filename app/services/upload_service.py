@@ -1,6 +1,6 @@
 from __future__ import annotations
 from sqlalchemy.orm import Session
-from app.fiscal.scanner import FiscalScanner
+from app.Legacy.fiscal.scanner import FiscalScanner
 from app.services.upload_preview_service import UploadPreviewService
 from app.services.upload_confirm_service import UploadConfirmService
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 
-from app.fiscal.constants import DOMINIOS_VALIDOS, DOM_GERAL
+from app.Legacy.fiscal.constants import DOMINIOS_VALIDOS, DOM_GERAL
 from app.sped.parser import parse_sped_preview, parse_sped_full
 from app.db.models import Empresa, EfdArquivo, EfdVersao, EfdRegistro
 

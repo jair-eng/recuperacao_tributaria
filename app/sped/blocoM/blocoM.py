@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, List, Any, Optional, Iterable, Tuple
+from typing import Dict, List, Any, Optional, Iterable
 from decimal import Decimal
 from app.config.settings import ALIQUOTA_PIS_PCT, ALIQUOTA_COFINS_PCT
-from app.fiscal.contexto import dec_any
+from app.Legacy.fiscal.contexto import dec_any
 from app.sped.blocoM.m_receita import (
     gerar_m_receitas,
     extrair_receitas_c170,
@@ -14,7 +14,6 @@ from app.sped.blocoM.m_utils import (
     _reg_of_line,
     _fmt_br,
     _fmt_aliq,
-    _pick_existing_m_lines,
     _key,
     _clean_sped_line,_cst_norm
 )

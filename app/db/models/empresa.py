@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from app.db.models.base import Base
 from sqlalchemy import Enum
 
-from app.fiscal.constants import DOMINIOS_VALIDOS, DOM_GERAL
+from app.Legacy.fiscal.constants import DOMINIOS_VALIDOS, DOM_GERAL
 
 
 class Empresa(Base):
