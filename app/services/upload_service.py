@@ -1,6 +1,5 @@
 from __future__ import annotations
 from sqlalchemy.orm import Session
-from app.Legacy.fiscal.scanner import FiscalScanner
 from app.services.upload_preview_service import UploadPreviewService
 from app.services.upload_confirm_service import UploadConfirmService
 
@@ -28,40 +27,17 @@ class UploadService:
         dominio = payload.get("dominio")
 
         try:
-            # 1) Persistir (gera empresa/arquivo/versao/registros)
             resultado = UploadConfirmService.confirmar_upload(
                 db=db,
                 temp_id=temp_id,
                 nome_arquivo=nome_arquivo,
-                dominio=dominio,  # ✅ AQUI
+                dominio=dominio,
             )
 
-            versao_id = resultado["versao_id"]
+            resultado["apontamentos_gerados"] = 0
+            resultado["erros_regras"] = []
+            resultado["pipeline"] = "V2_PREPARAR_REVISAO_MANUAL"
 
-            # 2) Rodar scanner automaticamente (resiliente)
-            apontamentos_gerados = 0
-            erros_regras: list[str] = []
-
-            try:
-                # Sugestão: o scanner retorna a qtd de apontamentos e/ou lista de erros
-                scan_result = FiscalScanner.scan_versao(db=db, versao_id=versao_id)
-                resultado["apontamentos_gerados"] = scan_result["apontamentos_gerados"]
-                resultado["erros_regras"] = scan_result["erros_regras"]
-
-                # suporte a diferentes formatos de retorno
-                if isinstance(scan_result, dict):
-                    apontamentos_gerados = int(scan_result.get("apontamentos_gerados", 0))
-                    erros_regras = list(scan_result.get("erros_regras", []))
-                elif isinstance(scan_result, int):
-                    apontamentos_gerados = int(scan_result)
-
-            except Exception as e:
-                # Não mata o confirm — só informa
-                erros_regras.append(f"Scanner falhou: {e}")
-
-
-
-            # 3 commit de tudo
             db.commit()
             return resultado
 

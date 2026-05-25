@@ -6,7 +6,7 @@ load_dotenv()
 from fastapi import FastAPI
 from app.api.routes.upload_endpoints import router as upload_router
 from app.api.creditos_endpoints import router as creditos_router
-from app.api.legacy_routes.workflow_endpoints import router as workflow_router
+#from app.api.legacy_routes.workflow_endpoints import router as workflow_router
 from app.api.versao_resumo_endpoints import router as versao_resumo_router
 from app.api.empresa_resumo_endpoints import router as empresa_resumo_router
 from app.api.export_endpoints import router as export_router
@@ -17,10 +17,11 @@ from app.db.session import engine
 from app.api.empresa_endpoints import router as empresa_router
 from app.api.legacy_routes.revision_endpoints import router as revision_router
 import app.db.models.models_all #  ✅ garante que todos os models foram carregados
-from app.api.legacy_routes.c170_endpoints import router as c170_router
+#from app.api.legacy_routes.c170_endpoints import router as c170_router
 from app.api.routes.icms_ipi_endpoints import router as icms_ipi_router
 from app.api.legacy_routes.foto_recuperacao_endpoints import router as foto_recuperacao_router
 from app.api.routes.dossie import router as dossie_router
+from app.domain.routes.workflow_endpoints.workflow_routes import router as workflow_routers
 from app.api.legacy_routes import manual_endpoints
 import logging
 import sys
@@ -40,12 +41,6 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        RotatingFileHandler(
-            LOG_DIR / "sped_creditos.log",
-            maxBytes=5_000_000,
-            backupCount=3,
-            encoding="utf-8",
-        ),
     ],
 )
 
@@ -66,7 +61,7 @@ app = FastAPI(
 
 app.include_router(upload_router)
 app.include_router(creditos_router)
-app.include_router(workflow_router)
+#app.include_router(workflow_router)
 app.include_router(export_router)
 app.include_router(browse_router)
 app.include_router(apontamentos_router)
@@ -75,11 +70,12 @@ app.include_router(empresa_resumo_router)
 
 app.include_router(empresa_router)
 app.include_router(revision_router)
-app.include_router(c170_router)
+#app.include_router(c170_router)
 app.include_router(dossie_router)
 app.include_router(icms_ipi_router)
 app.include_router(foto_recuperacao_router)
 app.include_router(manual_endpoints.router)
+app.include_router(workflow_routers)
 
 
 

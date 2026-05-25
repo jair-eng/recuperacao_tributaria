@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 from app.db.models.efd_revisao import EfdRevisao
-from app.Legacy.fiscal.scanner import FiscalScanner
 from typing import Optional, Literal, List, Set
 from fastapi import APIRouter, Depends, Query
 from app.db.session import get_db
 from app.db.models import EfdVersao, EfdArquivo
 from app.db.models import EfdApontamento, EfdRegistro
 from sqlalchemy.orm import Session
-from app.api.payloads import ReprocessarSelecaoPayload
 from sqlalchemy import update, or_ , delete, case , Integer, select, func, exists
 from pydantic import BaseModel
 import time
 from typing import Any, Dict
 from fastapi import HTTPException, status
 
-from app.schemas.workflow import AplicarRevisaoPayload, ApontamentosBatchPayload
+from app.domain.workflow.preparar_revisao_service import preparar_revisao
+from app.schemas.workflow import ApontamentosBatchPayload
 from app.legacy_service.apontamento_service import ApontamentoService
-from app.legacy_service.revision_service import RevisionService
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,353 +35,44 @@ def reprocessar_apontamentos(
     payload: ReprocessarPayload = ReprocessarPayload(),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-
-    t0 = time.time()
-    step = "INIT"
-
-    logger.info("[REPROCESSAR v%s] início", versao_id)
-
-    origem = db.query(EfdVersao).filter(EfdVersao.id == versao_id).first()
-    if not origem:
-        logger.warning("[REPROCESSAR v%s] versão não encontrada", versao_id)
-        raise HTTPException(status_code=404, detail="Versão não encontrada")
-
-    logger.warning("[REPROCESSAR v%s] versão não encontrada", versao_id)
-
-    if origem.status == "EXPORTADA":
-        logger.warning("[REPROCESSAR v%s] bloqueado: versão exportada", versao_id)
-        raise HTTPException(
-            status_code=400,
-            detail="⚠️ Esta versão está EXPORTADA e é congelada. Reprocessar/editar está bloqueado.",
-        )
-
-    try:
-        # -----------------------------
-        # Checkpoint 0 (antes)
-        # -----------------------------
-        step = "BEFORE_COUNTS"
-        before_total = (
-            db.query(func.count(EfdApontamento.id))
-            .filter(EfdApontamento.versao_id == versao_id)
-            .scalar()
-        ) or 0
-
-        before_res = (
-            db.query(func.count(EfdApontamento.id))
-            .filter(
-                EfdApontamento.versao_id == versao_id,
-                EfdApontamento.resolvido.is_(True),
-            )
-            .scalar()
-        ) or 0
-
-        logger.info(
-            "[REPROCESSAR v%s] antes | total=%s resolvidos=%s",
-            versao_id,
-            int(before_total),
-            int(before_res),
-        )
-
-        # -----------------------------
-        # 1) Status da versão
-        # -----------------------------
-        step = "SET_STATUS"
-        db.execute(
-            update(EfdVersao)
-            .where(EfdVersao.id == versao_id)
-            .values(status="EM_REVISAO")
-            .execution_options(synchronize_session=False)
-        )
-        db.flush()
-
-        # -----------------------------
-        # 2) Hard reset: apaga tudo
-        # -----------------------------
-        step = "DELETE_APONTAMENTOS"
-        db.execute(delete(EfdApontamento).where(EfdApontamento.versao_id == versao_id))
-        db.flush()
-
-        deleted_count = (
-            db.query(func.count(EfdApontamento.id))
-            .filter(EfdApontamento.versao_id == versao_id)
-            .scalar()
-        ) or 0
-        logger.debug("[REPROCESSAR v%s] apontamentos apagados", versao_id)
-
-        # -----------------------------
-        # 3) Scan (recria apontamentos)
-        # -----------------------------
-        step = "SCAN_PREP"
-        aplicar_revisoes = bool(getattr(payload, "aplicar_revisoes", True))
-        preservar_resolvidos = bool(getattr(payload, "preservar_resolvidos", True))
-
-        versao = db.get(EfdVersao, int(versao_id))
-        if not versao:
-            raise HTTPException(status_code=404, detail="Versão não encontrada.")
-
-        empresa_id = getattr(versao, "empresa_id", None)
-        if empresa_id is None and getattr(versao, "arquivo_id", None):
-            arquivo = db.get(EfdArquivo, int(versao.arquivo_id))
-            empresa_id = getattr(arquivo, "empresa_id", None)
-
-        if empresa_id is None:
-            logger.warning(
-                "[REPROCESSAR v%s] empresa_id não resolvido para a versão",
-                versao_id,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail="Não foi possível resolver empresa_id para a versão.",
-            )
-
-        # garantir empresa_id persistido na versão
-        if getattr(versao, "empresa_id", None) is None:
-            versao.empresa_id = int(empresa_id)
-            db.add(versao)
-            db.flush()
-
-        #  gravar domínio da empresa
-        if not (getattr(versao, "dominio", None) or "").strip():
-            emp = getattr(getattr(versao, "arquivo", None), "empresa", None)
-            dom_emp = (getattr(emp, "dominio", None) or "").strip().upper() if emp else ""
-            if dom_emp:
-                versao.dominio = dom_emp
-                db.add(versao)
-                db.flush()
-
-        # -----------------------------
-        # 3.1) Scan
-        # -----------------------------
-        step = "SCAN_EXEC"
-        logger.info(
-            "[REPROCESSAR v%s] scan iniciado | aplicar_revisoes=%s preservar_resolvidos=%s",
-            versao_id,
-            aplicar_revisoes,
-            preservar_resolvidos,
-        )
-        t_scan = time.time()
-
-        res = FiscalScanner.scan_versao(
-            db,
-            versao_id=int(versao_id),
-            empresa_id=int(empresa_id),
-            preservar_resolvidos=preservar_resolvidos,
-            aplicar_revisoes=aplicar_revisoes,
-        )
-
-        logger.info(
-            "[REPROCESSAR v%s] scan concluído em %.2fs | apontamentos=%s",
-            versao_id,
-            time.time() - t_scan,
-            int(res.get("apontamentos_gerados", 0) if res else 0),
-        )
-        logger.debug("[REPROCESSAR v%s] scan_res=%s", versao_id, res)
-
-        q_c170_extra = (
-                           db.query(func.count(EfdRevisao.id))
-                           .filter(EfdRevisao.versao_origem_id == int(versao_id))
-                           .filter(EfdRevisao.versao_revisada_id.is_(None))
-                           .filter(EfdRevisao.reg == "C170")
-                           .filter(EfdRevisao.acao == "INSERT_AFTER")
-                           .filter(EfdRevisao.motivo_codigo == "CONTRIB_SEM_C170_V1")
-                           .scalar()
-                       ) or 0
-
-        # -----------------------------
-        # 4) Força pendente
-        # -----------------------------
-        step = "FORCE_PENDENTE"
-        db.execute(
-            update(EfdApontamento)
-            .where(EfdApontamento.versao_id == versao_id)
-            .values(resolvido=False)
-            .execution_options(synchronize_session=False)
-        )
-        db.flush()
-
-        # -----------------------------
-        # 5) Commit
-        # -----------------------------
-        step = "COMMIT"
-        db.commit()
-        logger.info("[REPROCESSAR v%s] commit concluído", versao_id)
-
-        # -----------------------------
-        # Checkpoint final
-        # -----------------------------
-        step = "AFTER_COUNTS"
-        after_total = (
-            db.query(func.count(EfdApontamento.id))
-            .filter(EfdApontamento.versao_id == versao_id)
-            .scalar()
-        ) or 0
-
-        after_res = (
-            db.query(func.count(EfdApontamento.id))
-            .filter(
-                EfdApontamento.versao_id == versao_id,
-                EfdApontamento.resolvido.is_(True),
-            )
-            .scalar()
-        ) or 0
-
-        logger.info(
-            "[REPROCESSAR v%s] depois | total=%s resolvidos=%s",
-            versao_id,
-            int(after_total),
-            int(after_res),
-        )
-
-        if int(after_res) > 0:
-            step = "GUARD_RAIL_RESOLVIDOS"
-            ids = [
-                r[0]
-                for r in (
-                    db.query(EfdApontamento.id)
-                    .filter(
-                        EfdApontamento.versao_id == versao_id,
-                        EfdApontamento.resolvido.is_(True),
-                    )
-                    .limit(20)
-                    .all()
-                )
-            ]
-            logger.warning(
-                "[REPROCESSAR v%s] sobrou resolvido após reset | ids=%s",
-                versao_id,
-                ids,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"BUG: ainda existem resolvidos após hard reset. Ex IDs: {ids}",
-            )
-
-        mensagens: list[str] = []
-
-        if res:
-            total_c170_proc = int(res.get("total_c170_processados", 0) or 0)
-            apontamentos_gerados = int(res.get("apontamentos_gerados", 0) or 0)
-            atualizados_preservados = int(res.get("atualizados_preservados", 0) or 0)
-            descartados_sem_fk = int(res.get("descartados_sem_fk", 0) or 0)
-
-            mensagens.append(f"{total_c170_proc} registros C170 processados no scanner")
-            mensagens.append(f"{apontamentos_gerados} apontamentos gerados")
-
-            if atualizados_preservados:
-                mensagens.append(f"{atualizados_preservados} apontamentos preservados foram atualizados")
-
-            if descartados_sem_fk:
-                mensagens.append(f"{descartados_sem_fk} apontamentos foram descartados por falta de vínculo")
-
-        mensagens.append("Reprocessamento concluído com sucesso")
-        # Relatorio para o front
-
-        relatorio = {
-            "versao_id": int(versao_id),
-            "before_total": int(before_total),
-            "before_resolvidos": int(before_res),
-            "after_total": int(after_total),
-            "after_resolvidos": int(after_res),
-            "elapsed_s": round(time.time() - t0, 2),
-            "scanner": res or {},
-        }
-
-        return {
-            "ok": True,
-            "versao_id": versao_id,
-            "before_total": int(before_total),
-            "before_resolvidos": int(before_res),
-            "after_total": int(after_total),
-            "after_resolvidos": int(after_res),
-            "scan_result": res,
-            "message": "Reprocessamento TOTAL: apontamentos recriados e forçados para pendente.",
-            "aplicar_revisoes": aplicar_revisoes,
-            "preservar_resolvidos": preservar_resolvidos,
-            "elapsed_s": round(time.time() - t0, 2),
-            "mensagens": mensagens,
-            "relatorio": relatorio,
-        }
-
-    except HTTPException as e:
-        logger.warning(
-            "[REPROCESSAR v%s] erro HTTP | step=%s status=%s detail=%s",
-            versao_id,
-            step,
-            e.status_code,
-            e.detail,
-        )
-        db.rollback()
-        raise
-    except Exception as e:
-        logger.exception(
-            "[REPROCESSAR v%s] falha | step=%s erro=%s",
-            versao_id,
-            step,
-            repr(e),
-        )
-        db.rollback()
-        raise HTTPException(status_code=400, detail=f"BUG step={step}: {str(e)}")
-
-
-@router.get("/versao/{versao_id}/apontamentos/debug")
-def debug_apontamentos(versao_id: int, db: Session = Depends(get_db)):
-    rows = db.query(
-        EfdApontamento.id,
-        EfdApontamento.tipo,
-        EfdApontamento.resolvido,
-    ).filter(EfdApontamento.versao_id == versao_id).order_by(EfdApontamento.id.desc()).limit(50).all()
-
-    return [{"id": r[0], "tipo": r[1], "resolvido": bool(r[2])} for r in rows]
-
-@router.post("/versao/{versao_id}/reprocessar_selecao")
-def reprocessar_selecao(
-    versao_id: int,
-    payload: ReprocessarSelecaoPayload,
-    db: Session = Depends(get_db),
-):
     versao = db.query(EfdVersao).filter(EfdVersao.id == versao_id).first()
+    print(
+        f"[REPROCESSAR_V2] iniciando reprocessamento de apontamentos | Versao={ versao}",
+        flush=True,
+    )
+
     if not versao:
         raise HTTPException(status_code=404, detail="Versão não encontrada")
 
     if versao.status == "EXPORTADA":
-        raise HTTPException(status_code=400, detail="Versão EXPORTADA é congelada.")
-
-    ids = list({int(x) for x in payload.apontamento_ids})
-
-    # valida pertencimento
-    found_ids = {
-        i for (i,) in db.query(EfdApontamento.id)
-        .filter(EfdApontamento.versao_id == versao_id, EfdApontamento.id.in_(ids))
-        .all()
-    }
-    missing = [i for i in ids if i not in found_ids]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"IDs inválidos nesta versão: {missing[:20]}")
+        raise HTTPException(
+            status_code=400,
+            detail="Versão EXPORTADA é congelada.",
+        )
 
     try:
-        # reabre selecionados
-        (db.query(EfdApontamento)
-           .filter(EfdApontamento.versao_id == versao_id, EfdApontamento.id.in_(ids))
-           .update({EfdApontamento.resolvido: False}, synchronize_session=False))
-        db.flush()
+        resultado = preparar_revisao(
+            db=db,
+            versao_id=versao_id,
+        )
 
-        # reprocessa versão preservando os demais resolvidos
-        res = FiscalScanner.scan_versao(db, versao_id=versao_id, preservar_resolvidos=True)
-
-        pendentes = (db.query(func.count(EfdApontamento.id))
-                       .filter(EfdApontamento.versao_id == versao_id, EfdApontamento.resolvido == False)  # noqa
-                       .scalar()) or 0
-
-        if versao.status == "VALIDADA" and pendentes > 0:
-            versao.status = "EM_REVISAO"
-
-        db.commit()
-        return {"versao_id": versao_id, "reabertos": len(ids), "pendentes": pendentes, **(res or {})}
+        return {
+            "ok": True,
+            "versao_id": versao_id,
+            "message": "Reprocessamento concluído pelo pipeline novo.",
+            "mensagens": [
+                "Mesa fiscal materializada.",
+                "Apontamentos recriados pelo pipeline novo.",
+            ],
+            "relatorio": resultado,
+        }
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao reprocessar pelo pipeline novo: {e}",
+        )
 
 @router.get(
     "/versao/{versao_id}/apontamentos",
@@ -710,43 +400,6 @@ def aplicar_apontamentos_em_lote(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-
-@router.post("/versao/{versao_id}/aplicar-revisao",
-    status_code=status.HTTP_201_CREATED,
-)
-def aplicar_revisao_apontamento(
-    apontamento_id: int,
-    payload: AplicarRevisaoPayload,
-    db: Session = Depends(get_db),
-):
-    """
-    Cria uma revisão (REPLACE_LINE) ligada a um apontamento.
-    - cria (ou reutiliza) a versão revisada automaticamente
-    - não altera a versão original
-    """
-    try:
-        rev = RevisionService.criar_revisao_replace_line(
-            db,
-            apontamento_id=int(apontamento_id),
-            linha_nova=str(payload.linha_nova),
-            motivo_codigo=payload.motivo_codigo,
-        )
-        db.commit()
-        return {
-            "revisao_id": int(rev.id),
-            "versao_origem_id": int(rev.versao_origem_id),
-            "versao_revisada_id": int(rev.versao_revisada_id),
-            "registro_id": int(rev.registro_id),
-            "acao": str(rev.acao),
-            "linha_num": rev.revisao_json.get("linha_num"),
-            "motivo_codigo": rev.motivo_codigo,
-        }
-    except ValueError as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/versao/{versao_id}/resolver_todos", status_code=200)
 def resolver_todos_pendentes(versao_id: int, db: Session = Depends(get_db)):

@@ -1,0 +1,48 @@
+from app.domain.fiscal.cenarios.cenario_posto_cred_normal import cenario_posto_credito_normal
+from app.domain.fiscal.cenarios.cenario_lc192 import cenario_lc192
+from app.domain.fiscal.cenarios.cenario_cafe import cenario_cafe
+from app.domain.fiscal.cenarios.cenario_insumo_transportadora import cenario_insumo_transportadora
+from app.domain.fiscal.cenarios.cenario_insumo_cafe import cenario_insumo_cafe
+from app.domain.fiscal.cenarios.cenario_insumo_revenda_gas import cenario_insumo_revenda_gas
+
+CENARIOS_FISCAIS = [
+    cenario_posto_credito_normal,
+    cenario_insumo_cafe,
+    cenario_insumo_revenda_gas,
+    cenario_insumo_transportadora,
+    cenario_cafe,
+    cenario_lc192,
+]
+
+
+def avaliar_cenarios(meta, classificacao):
+    for fn in CENARIOS_FISCAIS:
+        nome = getattr(fn, "__name__", str(fn))
+
+        try:
+            cenario = fn(meta, classificacao)
+
+            print(
+                "[AVALIAR_CENARIO]",
+                "fn=", nome,
+                "cod_item=", meta.get("cod_item"),
+                "dominio=", meta.get("dominio"),
+                "ativo=", cenario.get("ativo") if cenario else None,
+                "justificativa=", cenario.get("justificativa") if cenario else None,
+                "fundamento=", cenario.get("fundamento_legal") if cenario else None,
+                flush=True,
+            )
+
+            if cenario and cenario.get("ativo"):
+                return cenario
+
+        except Exception as e:
+            print(
+                "[AVALIAR_CENARIO][ERRO]",
+                "fn=", nome,
+                "cod_item=", meta.get("cod_item"),
+                "erro=", repr(e),
+                flush=True,
+            )
+
+    return None

@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
+
+from app.db.models import ItemFiscalConsolidado
 from app.db.models.nf_icms_base import NfIcmsBase
 from app.db.models.nf_icms_item import NfIcmsItem
 from app.icms_ipi.parser_sped_icms import parse_sped_icms_ipi_preview
@@ -141,11 +143,26 @@ def importar_sped_icms(
             if duplicadas:
                 ids_dup = [int(x.id) for x in duplicadas]
 
+                ids_itens_icms_dup = [
+                    x[0]
+                    for x in (
+                        db.query(NfIcmsItem.id)
+                        .filter(NfIcmsItem.nf_icms_base_id.in_(ids_dup))
+                        .all()
+                    )
+                ]
+
+                if ids_itens_icms_dup:
+                    db.query(ItemFiscalConsolidado).filter(
+                        ItemFiscalConsolidado.nf_icms_item_id.in_(ids_itens_icms_dup)
+                    ).delete(synchronize_session=False)
+
                 removidos_dup_itens = (
                     db.query(NfIcmsItem)
                     .filter(NfIcmsItem.nf_icms_base_id.in_(ids_dup))
                     .delete(synchronize_session=False)
                 )
+
                 itens_removidos += int(removidos_dup_itens or 0)
 
                 removidos_dup_bases = (
@@ -153,6 +170,7 @@ def importar_sped_icms(
                     .filter(NfIcmsBase.id.in_(ids_dup))
                     .delete(synchronize_session=False)
                 )
+
                 bases_duplicadas_removidas += int(removidos_dup_bases or 0)
 
                 print(
@@ -189,6 +207,20 @@ def importar_sped_icms(
 
                 base_row.fonte = nota.fonte
                 base_row.nome_arquivo = nome_arquivo
+
+                ids_itens_icms = [
+                    x[0]
+                    for x in (
+                        db.query(NfIcmsItem.id)
+                        .filter(NfIcmsItem.nf_icms_base_id == base_row.id)
+                        .all()
+                    )
+                ]
+
+                if ids_itens_icms:
+                    db.query(ItemFiscalConsolidado).filter(
+                        ItemFiscalConsolidado.nf_icms_item_id.in_(ids_itens_icms)
+                    ).delete(synchronize_session=False)
 
                 removidos = (
                     db.query(NfIcmsItem)

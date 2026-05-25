@@ -345,7 +345,12 @@ elif page == "0 — Importar SPED":
         colX, colY = st.columns(2)
         with colX:
             if st.button("➡️ Ir para Revisar & Apontamentos"):
-                goto("3 — Revisar & Apontamentos")
+                versao_id = st.session_state.get("selected_versao_id")
+
+                if not versao_id:
+                    st.warning("Nenhuma versão selecionada.")
+                else:
+                    goto("3 — Revisar & Apontamentos")
         with colY:
             if st.button("➡️ Ir para Selecionar Versão"):
                 goto("2 — Selecionar Versão")
@@ -1095,7 +1100,7 @@ elif page == "3 — Revisar & Apontamentos":
     )
 
     # refresh manual
-    colT1, colT2, colT3 = st.columns([1, 1, 1])
+    colT1, colT2 = st.columns([1, 1])
 
     with colT1:
         if st.button("↩️ Trocar versão"):
@@ -1105,10 +1110,6 @@ elif page == "3 — Revisar & Apontamentos":
         if st.button("🔃 Atualizar dados"):
             clear_after_workflow()
             st.rerun()
-
-    with colT3:
-        if "confirm_reset_auto" not in st.session_state:
-            st.session_state.confirm_reset_auto = False
 
     # =========================
     # Resumo da versão (1x) + Apontamentos (fonte da verdade) + Métricas
@@ -1129,61 +1130,6 @@ elif page == "3 — Revisar & Apontamentos":
         status_code = str(raw_status).strip().upper().replace(" ", "_")
         status_label = status_code.replace("_", " ")
 
-        # botão novo, agora que o status existe
-        with colT3:
-            if status_code == "EXPORTADA":
-                st.button("🧹 Limpar revisões automáticas", disabled=True)
-            else:
-                if not st.session_state.confirm_reset_auto:
-                    if st.button("🧹 Limpar revisões automáticas"):
-                        st.session_state.confirm_reset_auto = True
-                        st.rerun()
-
-        if st.session_state.get("confirm_reset_auto", False):
-            st.warning(
-                "Isso removerá as revisões automáticas desta versão. "
-                "Depois você deverá reprocessar e resolver novamente."
-            )
-
-            c_reset1, c_reset2 = st.columns([1, 1])
-
-            with c_reset1:
-                if st.button("✅ Confirmar limpeza", type="primary", key="confirmar_limpeza_auto"):
-                    resp = requests.delete(
-                        f"{API_BASE}/workflow/versao/{int(versao_id)}/revisoes-automaticas",
-                        timeout=60,
-                    )
-
-                    if resp.ok:
-                        data = resp.json() or {}
-                        total = int(data.get("total_removido", 0) or 0)
-
-                        st.success(f"{total} revisões automáticas removidas.")
-
-                        st.session_state.ap_cache_bust += 1
-                        try:
-                            cached_apontamentos.clear()
-                        except Exception:
-                            pass
-                        try:
-                            cached_resumo_versao.clear()
-                        except Exception:
-                            pass
-
-                        clear_after_workflow()
-                        st.session_state.confirm_reset_auto = False
-                        st.rerun()
-                    else:
-                        try:
-                            err = resp.json()
-                        except Exception:
-                            err = resp.text
-                        st.error(f"Erro ao limpar revisões automáticas: {err}")
-
-            with c_reset2:
-                if st.button("Cancelar limpeza", key="cancelar_limpeza_auto"):
-                    st.session_state.confirm_reset_auto = False
-                    st.rerun()
 
         # Header
         st.markdown(
@@ -1207,7 +1153,6 @@ elif page == "3 — Revisar & Apontamentos":
     except Exception as e:
         st.error(f"Erro ao carregar resumo da versão: {e}")
         st.stop()
-
 
 
     try:
@@ -1756,182 +1701,6 @@ elif page == "3 — Revisar & Apontamentos":
             if st.session_state[df_key]["ID"].isna().any():
                 st.error("Há linhas com ID inválido/NaN no dataframe de apontamentos. Clique em 🔃 Atualizar dados.")
                 st.stop()
-
-            # ---------------------------
-            # Preparar aplicação (confirmação em 2 passos)
-            # ---------------------------
-            prep_key = f"ap_pending_apply_{versao_id}"
-
-
-            bad = st.session_state[df_key][~st.session_state[df_key]["ID"].astype(str).str.match(r"^\d+(\.0)?$")]
-            if not bad.empty:
-                st.error("Existem linhas com ID inválido (texto) — isso impede preparar aplicação.")
-                st.dataframe(bad[["ID", "Tipo", "Código", "Linha", "Resolvido"]].head(50))
-                st.stop()
-
-
-            # ---------------------------
-            # Preparar aplicação (confirmação em 2 passos)
-            # ---------------------------
-            prep_key = f"ap_pending_apply_{versao_id}"
-            flash_key = f"ap_flash_{versao_id}"
-
-            # mostra “flash” após rerun
-            flash = st.session_state.pop(flash_key, None)
-            if flash:
-                kind = flash.get("kind", "info")
-                msg = flash.get("msg", "")
-                if kind == "success":
-                    st.success(msg)
-                elif kind == "warning":
-                    st.warning(msg)
-                else:
-                    st.info(msg)
-
-            colP, colC = st.columns([1, 2])
-            with colP:
-                if st.button("📌 Preparar aplicação", key=f"ap_prepare_{versao_id}"):
-                    to_resolver, to_reabrir = compute_changes(
-                        st.session_state[base_key],
-                        st.session_state[df_key],
-                    )
-
-                    st.session_state[prep_key] = {
-                        "versao_id": int(versao_id),
-                        "to_resolver": to_resolver,
-                        "to_reabrir": to_reabrir,
-                    }
-
-                    if not to_resolver and not to_reabrir:
-                        st.session_state[flash_key] = {"kind": "info", "msg": "Nenhuma alteração detectada."}
-                    else:
-                        st.session_state[flash_key] = {
-                            "kind": "success",
-                            "msg": f"Alterações preparadas: {len(to_resolver) + len(to_reabrir)}"
-                        }
-
-                    st.rerun()
-
-            pending = st.session_state.get(prep_key)
-
-            if pending and (pending.get("to_resolver") or pending.get("to_reabrir")):
-                to_resolver = pending.get("to_resolver", [])
-                to_reabrir = pending.get("to_reabrir", [])
-
-                st.warning(
-                    f"Confirme para aplicar {len(to_resolver) + len(to_reabrir)} alteração(ões): "
-                    f"{len(to_resolver)} resolver, {len(to_reabrir)} reabrir."
-                )
-
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    if st.button("✅ Confirmar revisão e ir para Validar", key=f"confirm_review_{versao_id}"):
-                        try:
-                            pending = st.session_state.get(prep_key)
-
-                            if not pending or (not pending.get("to_resolver") and not pending.get("to_reabrir")):
-                                st.warning(
-                                    "Antes de confirmar, clique em 📌 Preparar aplicação (nenhuma alteração preparada).")
-                                st.stop()
-
-                            # 1) APLICA EM LOTE (1 chamada)
-                            batch_payload = {
-                                "versao_id": int(versao_id),
-                                "to_resolver": pending.get("to_resolver", []),
-                                "to_reabrir": pending.get("to_reabrir", []),
-                            }
-
-                            url_batch = f"{API_BASE}/workflow/apontamento/batch"
-                            rb = requests.patch(url_batch, json=batch_payload, timeout=60)
-
-                            if not rb.ok:
-                                st.error("Não foi possível aplicar as alterações em lote.")
-                                try:
-                                    st.json(rb.json())
-                                except Exception:
-                                    st.code(rb.text)
-                                st.stop()
-
-                            batch_resp = rb.json()
-
-                            # Se tiver IDs ignorados, já avisa (versão errada / IDs inválidos)
-                            ignorados = int(batch_resp.get("nao_encontrados_ou_outra_versao", 0) or 0)
-                            pendentes_restantes = int(batch_resp.get("pendentes_restantes", 0) or 0)
-
-                            if ignorados > 0:
-                                st.warning(f"Atenção: {ignorados} ID(s) foram ignorados (fora da versão ou inválidos).")
-
-                            # 2) CONFIRMA REVISÃO (sem payload)
-                            url_confirm = f"{API_BASE}/workflow/versao/{int(versao_id)}/confirmar-revisao"
-                            rc = requests.post(url_confirm, timeout=60)
-
-                            if not rc.ok:
-                                st.error("Não foi possível confirmar a revisão.")
-                                try:
-                                    st.json(rc.json())
-                                except Exception:
-                                    st.code(rc.text)
-                                st.stop()
-
-                            # tenta ler a resposta
-                            confirm_resp = {}
-                            try:
-                                confirm_resp = rc.json() or {}
-                            except Exception:
-                                confirm_resp = {}
-
-                            versao_revisada_id = confirm_resp.get("versao_revisada_id") or confirm_resp.get(
-                                "versao_id_revisada")
-
-                            # feedback
-                            msg_extra = ""
-                            if versao_revisada_id:
-                                try:
-                                    vr_int = int(versao_revisada_id)
-                                    msg_extra = f" Versão revisada criada: v{vr_int}."
-                                    # ✅ muda para a versão revisada para exportar o arquivo com alterações materializadas
-                                    st.session_state.selected_versao_id = vr_int
-                                except Exception:
-                                    # se vier algo estranho, só ignora
-                                    pass
-
-                            st.success(
-                                f"Alterações aplicadas: {batch_resp.get('updated_total', 0)}. "
-                                f"Pendentes restantes: {pendentes_restantes}. "
-                                f"Revisão confirmada!{msg_extra} Indo para Exportar..."
-                            )
-
-                            # limpa o que estava preparado para não reaplicar sem querer
-                            st.session_state.pop(prep_key, None)
-
-                            clear_after_workflow()
-
-                            # ✅ vai para exportar
-                            st.session_state["page"] = "5 — Exportar"
-                            st.rerun()
-
-
-                        except Exception as e:
-                            st.error("Erro ao confirmar revisão.")
-                            st.exception(e)
-
-                with c2:
-                    if st.button("❌ Cancelar", key=f"ap_cancel_apply_{versao_id}"):
-                        st.session_state.pop(prep_key, None)
-                        st.info("Aplicação cancelada.")
-                        st.rerun()
-            else:
-                st.caption("Clique em “Preparar aplicação” para ver um resumo e confirmar antes de aplicar.")
-
-    # ---------------------------
-
-    # ----- Confirmar revisão (ir para validação)
-    st.divider()
-    st.subheader("Confirmar revisão")
-    st.caption(
-        "Use a **Planilha de revisão** para: marcar/desmarcar, clicar em **📌 Preparar aplicação** e depois **✅ Confirmar revisão**. "
-        "Isso aplica em lote (robusto) e evita erros."
-    )
 
     # Reprocessar
     # ---------------------------

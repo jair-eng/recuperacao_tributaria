@@ -25,5 +25,5 @@ IDX_C170 = {
     "aliq_cofins": 31,
     "vl_cofins": 34,
 
-    "cod_cta": 36,
+    "cod_cta": 35,
 }

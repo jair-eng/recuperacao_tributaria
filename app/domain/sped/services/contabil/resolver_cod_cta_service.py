@@ -3,13 +3,101 @@ from typing import Optional
 
 from app.domain.sped.contabil.models.conta_resolvida import ContaResolvida
 from app.domain.sped.contabil.loaders.loader_0500 import Contabil0500Context
-
+from app.utils.strings import norm_str
 
 ORIGEM_C170_ORIGINAL = "C170_ORIGINAL"
 ORIGEM_C170_SEM_0500 = "C170_SEM_0500"
 ORIGEM_MESMA_NATUREZA = "MESMA_NATUREZA"
 ORIGEM_NAO_RESOLVIDO = "NAO_RESOLVIDO"
 
+
+def _descricao_tokens(desc: str) -> set[str]:
+    base = norm_str(desc).lower()
+    tokens = {
+        t for t in base.replace("-", " ").replace("/", " ").split()
+        if len(t) >= 4
+    }
+    stop = {"para", "com", "de", "da", "das", "dos", "item", "tipo"}
+    return {t for t in tokens if t not in stop}
+
+
+def _score_natureza_contabil(
+    *,
+    alvo_desc: str,
+    alvo_cfop: str,
+    alvo_ncm: str,
+    cand_desc: str,
+    cand_cfop: str,
+    cand_ncm: str,
+) -> int:
+    score = 0
+
+    if alvo_cfop and cand_cfop and alvo_cfop == cand_cfop:
+        score += 4
+    elif alvo_cfop and cand_cfop and alvo_cfop[:3] == cand_cfop[:3]:
+        score += 2
+
+    if alvo_ncm and cand_ncm and alvo_ncm == cand_ncm:
+        score += 4
+    elif alvo_ncm and cand_ncm and alvo_ncm[:4] == cand_ncm[:4]:
+        score += 2
+
+    ta = _descricao_tokens(alvo_desc)
+    tc = _descricao_tokens(cand_desc)
+    inter = ta & tc
+
+    if len(inter) >= 2:
+        score += 3
+    elif len(inter) == 1:
+        score += 1
+
+    desc_a = norm_str(alvo_desc).lower()
+    desc_c = norm_str(cand_desc).lower()
+
+    grupos = [
+        {"diesel", "combustivel", "combustível"},
+        {"pneu", "recap"},
+        {"filtro", "oleo", "óleo", "lubrificante"},
+        {"freio", "lona", "rolamento", "peca", "peça"},
+    ]
+
+    for g in grupos:
+        if any(x in desc_a for x in g) and any(x in desc_c for x in g):
+            score += 2
+            break
+
+    return score
+
+def montar_candidatos_mesma_natureza(
+    *,
+    alvo,
+    itens_referencia: list,
+) -> list[tuple[int, str]]:
+    candidatos: list[tuple[int, str]] = []
+
+    for cand in itens_referencia:
+        cod_cta = str(getattr(cand, "cod_cta", "") or "").strip()
+        origem = str(getattr(cand, "cod_cta_origem", "") or "").strip()
+
+        if not cod_cta:
+            continue
+
+        if origem in {ORIGEM_NAO_RESOLVIDO, "NAO_APLICAVEL_SO_ICMS"}:
+            continue
+
+        score = _score_natureza_contabil(
+            alvo_desc=str(getattr(alvo, "descr_item", "") or ""),
+            alvo_cfop=str(getattr(alvo, "cfop", "") or ""),
+            alvo_ncm=str(getattr(alvo, "ncm", "") or ""),
+            cand_desc=str(getattr(cand, "descr_item", "") or ""),
+            cand_cfop=str(getattr(cand, "cfop", "") or ""),
+            cand_ncm=str(getattr(cand, "ncm", "") or ""),
+        )
+
+        if score >= 5:
+            candidatos.append((score, cod_cta))
+
+    return candidatos
 
 def resolver_cod_cta_v2(
     *,

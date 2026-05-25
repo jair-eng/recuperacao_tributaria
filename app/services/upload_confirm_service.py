@@ -170,8 +170,12 @@ class UploadConfirmService:
             # ------------------------------------------------------------
             versao = EfdVersao(
                 arquivo_id=int(arquivo.id),
+                empresa_id=int(empresa.id),
+                periodo=periodo_ok,
+                tipo_arquivo="EFD_CONTRIBUICOES",
                 numero=1,
                 status="GERADA",
+                dominio=empresa.dominio or dominio_payload or DOM_GERAL,
             )
             db.add(versao)
             db.flush()

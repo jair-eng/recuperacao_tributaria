@@ -79,8 +79,14 @@ async def preview_icms_ipi(
             temp_path = await _salvar_upload_temporario(upload)
 
             preview_raw = parse_sped_icms_ipi_preview(temp_path)
+            print("[ICMS_PREVIEW_RAW]", preview_raw, flush=True)
             empresa_info = preview_raw.get("empresa") or {}
             cnpj_arquivo = empresa_info.get("cnpj")
+            print(
+                "[ICMS_CNPJ_EXTRAIDO]",
+                cnpj_arquivo,
+                flush=True,
+            )
 
             try:
                 empresa = _buscar_empresa_por_cnpj(db, cnpj_arquivo)

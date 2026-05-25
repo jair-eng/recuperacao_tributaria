@@ -1,18 +1,20 @@
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
-
 from app.db.models import (
     EfdVersao,
     EfdRegistro,
     ContextoFiscalVersao,
-    ItemFiscalConsolidado
+    ItemFiscalConsolidado, Empresa
 )
+from app.domain.fiscal.catalogo.classificacao_fiscal import classificar_item_fiscal
 from app.domain.sped.contextos.contexto_competencia import montar_contexto_competencia
 from app.domain.sped.maps.icms_item_map import montar_mapa_icms_item, buscar_icms_item_em_mapa
 from app.domain.sped.maps.reg0150_map import IDX_0150
 from app.domain.sped.maps.reg0200_map import IDX_0200
-from app.domain.sped.services.contabil.resolver_cod_cta_service import resolver_cod_cta_v2
+from app.domain.sped.maps.c170_map import IDX_C170
+from app.domain.sped.services.contabil.resolver_cod_cta_service import resolver_cod_cta_v2, ORIGEM_NAO_RESOLVIDO, \
+    montar_candidatos_mesma_natureza
+from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.utils.json_utils import campos_json
 from app.utils.list_utils import get_safe
 from app.utils.numbers import dec_any
@@ -27,6 +29,22 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
     db.flush()
 
     versao = db.query(EfdVersao).filter(EfdVersao.id == versao_id).first()
+    empresa = (
+        db.query(Empresa)
+        .filter(Empresa.id == versao.empresa_id)
+        .first()
+    )
+
+    dominio = (
+            versao.dominio
+            or (empresa.dominio if empresa else None)
+            or "GERAL"
+    )
+    catalogo = carregar_catalogo_fiscal(
+        db,
+        empresa_id=versao.empresa_id,
+    )
+
     if not versao:
         raise ValueError("Versão não encontrada")
 
@@ -34,7 +52,7 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         empresa_id=versao.empresa_id,
         versao_id=versao.id,
         periodo=versao.periodo,
-        dominio=versao.dominio,
+        dominio=dominio,
         status="PROCESSANDO",
     )
     db.add(contexto)
@@ -47,13 +65,13 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         .all()
     )
 
-    print(f"[CTX] registros carregados qtd={len(registros)}")
     ctx_competencia = montar_contexto_competencia(
         registros=registros,
     )
 
     mapa_0150 = {}
     mapa_0200 = {}
+    itens_contrib_materializados = []
 
     for r in registros:
         campos = campos_json(r.conteudo_json)
@@ -68,12 +86,7 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             if cod_item_0200:
                 mapa_0200[cod_item_0200] = campos
 
-    print(
-        "[CTX] mapas carregados",
-        "0150=", len(mapa_0150),
-        "0200=", len(mapa_0200),
-        flush=True,
-    )
+
     periodo_base = str(versao.periodo or "").strip()
 
     if not periodo_base:
@@ -90,15 +103,11 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         empresa_id=versao.empresa_id,
         periodo=periodo_base,
     )
-
-    print(
-        "[CTX] mapa ICMS carregado",
-        "periodo=", periodo_base,
-        "full=", len(mapa_icms["full"]),
-        "cod=", len(mapa_icms["cod"]),
-        "num=", len(mapa_icms["num"]),
-        flush=True,
-    )
+    chaves_nf_icms = {
+        str(item.chave_nfe or "").strip()
+        for item in mapa_icms["itens"]
+        if str(item.chave_nfe or "").strip()
+    }
 
     c100_atual = None
     qtd_itens = 0
@@ -142,6 +151,13 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         )
 
         tem_no_icms = icms_item is not None
+        tem_nf_icms = bool(chave_nfe and chave_nfe in chaves_nf_icms)
+        tem_item_icms = icms_item is not None
+
+        motivo_sem_match_item = None
+
+        if tem_nf_icms and not tem_item_icms:
+            motivo_sem_match_item = "NF_ICMS_EXISTE_ITEM_NAO_IDENTIFICADO"
 
 
         divergencias = []
@@ -159,15 +175,6 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             if cfop_contrib and cfop_icms and cfop_contrib != cfop_icms:
                 divergencias.append("CFOP_DIVERGENTE")
 
-        if divergencias:
-            print(
-                "[CTX DIVERGENCIA]",
-                "chave=", chave_nfe,
-                "num_item=", num_item,
-                "cod_item=", cod_item,
-                "divergencias=", divergencias,
-                flush=True,
-            )
 
         participante_nome = (
             icms_item.participante_nome
@@ -202,12 +209,30 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             else None
         )
 
-        cod_cta_original = get_safe(c170, 36)
+        cod_cta_original = get_safe(c170, IDX_C170["cod_cta"])
 
         conta_resolvida = resolver_cod_cta_v2(
             cod_cta_original=cod_cta_original,
             contabil_0500=ctx_competencia.contabil_0500,
         )
+        semantica_fiscal = {
+            "contrib": classificar_item_fiscal(
+                meta={
+                    "dominio": dominio,
+                    "cfop": cfop_contrib,
+                    "ncm": ncm_contrib,
+                },
+                catalogo=catalogo,
+            ),
+            "icms": classificar_item_fiscal(
+                meta={
+                    "dominio": dominio,
+                    "cfop": cfop_icms,
+                    "ncm": ncm_icms,
+                },
+                catalogo=catalogo,
+            ) if icms_item else None,
+        }
 
         item = ItemFiscalConsolidado(
             contexto_id=contexto.id,
@@ -221,7 +246,7 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
 
             tem_no_contrib=True,
             tem_no_icms=tem_no_icms,
-            status_cruzamento=("DIVERGENTE" if divergencias else "MATCH" if tem_no_icms else "SO_CONTRIB" ),
+            status_cruzamento=("DIVERGENTE" if divergencias else "MATCH" if tem_item_icms else "SO_CONTRIB" ),
 
             cod_part=cod_part,
             participante_nome=participante_nome,
@@ -259,19 +284,52 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             cod_cta_confianca=conta_resolvida.confianca,
             cod_cta_justificativa=conta_resolvida.justificativa,
 
-            dominio=versao.dominio,
+            dominio=dominio,
             regime=None,
 
             meta={
                 "origem": "EFD_CONTRIBUICOES",
                 "linha_c100": c100_atual.linha,
                 "linha_c170": reg.linha,
-                "icms_match": bool(icms_item),
+                "tem_nf_icms": tem_nf_icms,
+                "tem_item_icms": tem_item_icms,
+                "motivo_sem_match_item": motivo_sem_match_item,
                 "divergencias": divergencias,
+                "semantica_fiscal": semantica_fiscal,
+                "comparativo_icms": {
+                    "ncm_contrib": ncm_contrib,
+                    "ncm_icms": ncm_icms,
+                    "cfop_contrib": cfop_contrib,
+                    "cfop_icms": cfop_icms,
+                }
             },
         )
+        itens_contrib_materializados.append(item)
         db.add(item)
         qtd_itens += 1
+
+    # Resolvendo conta na segunda passada
+    for item in itens_contrib_materializados:
+        if item.cod_cta_origem != ORIGEM_NAO_RESOLVIDO:
+            continue
+
+        candidatos = montar_candidatos_mesma_natureza(
+            alvo=item,
+            itens_referencia=itens_contrib_materializados,
+        )
+
+        conta_resolvida = resolver_cod_cta_v2(
+            cod_cta_original="",
+            contabil_0500=ctx_competencia.contabil_0500,
+            candidatos_mesma_natureza=candidatos,
+        )
+
+        if conta_resolvida.origem == "MESMA_NATUREZA":
+            item.cod_cta = conta_resolvida.cod_cta
+            item.cod_cta_origem = conta_resolvida.origem
+            item.cod_cta_confianca = conta_resolvida.confianca
+            item.cod_cta_justificativa = conta_resolvida.justificativa
+
     for icms_item in mapa_icms["itens"]:
         chave_icms = (
             str(icms_item.chave_nfe or "").strip(),
@@ -287,9 +345,21 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             if modelo == "57"
             else "CONTRIB_DOC_FALTANTE"
         )
-        
+
         if chave_icms in chaves_contrib:
             continue
+
+        semantica_fiscal = {
+            "contrib": None,
+            "icms": classificar_item_fiscal(
+                meta={
+                    "dominio": dominio,
+                    "cfop": icms_item.cfop,
+                    "ncm": icms_item.ncm,
+                },
+                catalogo=catalogo,
+            ),
+        }
 
         item = ItemFiscalConsolidado(
             contexto_id=contexto.id,
@@ -319,7 +389,7 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             participante_doc=icms_item.participante_cnpj,
             participante_tipo_doc="CNPJ" if icms_item.participante_cnpj else None,
 
-            dominio=versao.dominio,
+            dominio=dominio,
             regime=None,
             cod_mod=modelo,
 
@@ -333,39 +403,14 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
                 "icms_match": True,
                 "modelo": modelo,
                 "tipo_normalizacao": tipo_normalizacao,
+                "semantica_fiscal": semantica_fiscal,
             },
         )
 
         db.add(item)
         qtd_itens += 1
-    ###
-    from sqlalchemy import func
-    db.flush()
-    resumo_status = (
-        db.query(
-            ItemFiscalConsolidado.status_cruzamento,
-            func.count(ItemFiscalConsolidado.id),
-        )
-        .filter(ItemFiscalConsolidado.versao_id == versao.id)
-        .group_by(ItemFiscalConsolidado.status_cruzamento)
-        .all()
-    )
-
-    print("[CTX] resumo status:")
-    for status, qtd in resumo_status:
-        print(f"  - {status}: {qtd}")
-
-        ######
 
     contexto.status = "FINALIZADO"
     db.commit()
 
     print(f"[CTX] finalizado | itens={qtd_itens}")
-
-
-if __name__ == "__main__":
-    db = SessionLocal()
-    try:
-        materializar_contexto_fiscal(db, versao_id=1)
-    finally:
-        db.close()
