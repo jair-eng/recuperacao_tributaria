@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Numeric, Boolean, JSON, DateTime, func
+from sqlalchemy import Column, Integer, String, ForeignKey, Numeric, Boolean, JSON, DateTime, func, Text
 from sqlalchemy import BigInteger
 from sqlalchemy.orm import relationship
 
@@ -81,3 +81,28 @@ class ItemFiscalConsolidado(Base):
     contexto = relationship("ContextoFiscalVersao")
     empresa = relationship("Empresa")
     versao = relationship("EfdVersao")
+    # enriquecimento com ecd
+
+    # ===== ECD =====
+    ecd_arquivo_id = Column(Integer, nullable=True)
+
+    ecd_conta_nome = Column(String(255), nullable=True)
+    ecd_cod_nat = Column(String(20), nullable=True)
+    ecd_ind_cta = Column(String(10), nullable=True)
+    ecd_nivel = Column(String(20), nullable=True)
+    ecd_cod_cta_sup = Column(String(60), nullable=True)
+
+    ecd_cod_agl = Column(String(60), nullable=True)
+    ecd_dre_descr = Column(String(255), nullable=True)
+    ecd_dre_grupo = Column(String(10), nullable=True)
+    ecd_dre_valor = Column(Numeric(18, 2), nullable=True)
+
+    ecd_saldo_inicial = Column(Numeric(18, 2), nullable=True)
+    ecd_saldo_final = Column(Numeric(18, 2), nullable=True)
+    ecd_debito = Column(Numeric(18, 2), nullable=True)
+    ecd_credito = Column(Numeric(18, 2), nullable=True)
+
+    ecd_resultado_valor = Column(Numeric(18, 2), nullable=True)
+
+    ecd_confianca = Column(String(20), nullable=True)
+    ecd_justificativa = Column(Text, nullable=True)

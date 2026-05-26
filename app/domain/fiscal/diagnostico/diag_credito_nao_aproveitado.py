@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from app.utils.numbers import to_decimal
+from app.utils.numbers import  dec_any
 
 
 def diagnosticar_credito_nao_aproveitado(
@@ -32,10 +32,10 @@ def diagnosticar_credito_nao_aproveitado(
     cst_pis_destino = str(enquadramento.get("cst_pis_destino") or "").zfill(2)
     cst_cofins_destino = str(enquadramento.get("cst_cofins_destino") or "").zfill(2)
 
-    vl_bc_pis = to_decimal(meta.get("vl_bc_pis") or meta.get("base_pis"))
-    vl_bc_cofins = to_decimal(meta.get("vl_bc_cofins") or meta.get("base_cofins"))
-    vl_pis = to_decimal(meta.get("vl_pis"))
-    vl_cofins = to_decimal(meta.get("vl_cofins"))
+    vl_bc_pis = dec_any(meta.get("vl_bc_pis") or meta.get("base_pis"))
+    vl_bc_cofins = dec_any(meta.get("vl_bc_cofins") or meta.get("base_cofins"))
+    vl_pis = dec_any(meta.get("vl_pis"))
+    vl_cofins = dec_any(meta.get("vl_cofins"))
 
     problemas = []
 

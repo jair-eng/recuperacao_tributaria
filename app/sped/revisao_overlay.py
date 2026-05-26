@@ -196,9 +196,5 @@ def aplicar_revisoes_replace_line(
     # Removemos fisicamente da lista o que foi marcado como DELETADO
     resultado = [l for l in linhas_originais if l.origem != "DELETADO"]
 
-    print(
-        f"OVERLAY> final_lines={len(resultado)} (deletados={len(registros_deletados)}) "
-        f"hits_id={hits_id} hits_linha={hits_linha} miss={miss}"
-    )
 
     return resultado

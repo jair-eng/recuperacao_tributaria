@@ -15,6 +15,14 @@ from app.db.models.efd_registro import EfdRegistro
 from app.db.models.efd_apontamento import EfdApontamento
 from app.db.models.efd_revisao import EfdRevisao
 from app.db.models.nf_icms_item import NfIcmsItem
+from app.db.models.ecd import (
+    EcdArquivo,
+    EcdContaI050Db,
+    EcdVinculoI052Db,
+    EcdSaldoI155Db,
+    EcdResultadoI355Db,
+    EcdDreJ150Db,
+)
 
 __all__ = [
     "Empresa",
@@ -26,7 +34,16 @@ __all__ = [
     "NfIcmsBase",
     "NfIcmsItem",
     "ContextoFiscalVersao",
-    "ItemFiscalConsolidado"
+    "ItemFiscalConsolidado",
+    "EcdArquivo",
+    "EcdContaI050Db",
+    "EcdVinculoI052Db",
+    "EcdSaldoI155Db",
+    "EcdResultadoI355Db",
+    "EcdDreJ150Db",
+
+
+
 ]
 
 

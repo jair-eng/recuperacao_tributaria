@@ -14,6 +14,7 @@ from typing import Any, Dict
 from fastapi import HTTPException, status
 
 from app.domain.workflow.preparar_revisao_service import preparar_revisao
+from app.legacy_service.workflow_service import WorkflowService
 from app.schemas.workflow import ApontamentosBatchPayload
 from app.legacy_service.apontamento_service import ApontamentoService
 
@@ -51,14 +52,23 @@ def reprocessar_apontamentos(
         )
 
     try:
+        print("[DBG REPROCESSAR] antes preparar_revisao", flush=True)
         resultado = preparar_revisao(
             db=db,
             versao_id=versao_id,
         )
 
+
+        print(
+            "[DBG REPROCESSAR] depois preparar_revisao",
+            resultado,
+            flush=True,
+        )
+
         return {
             "ok": True,
             "versao_id": versao_id,
+            "status": versao.status,
             "message": "Reprocessamento concluído pelo pipeline novo.",
             "mensagens": [
                 "Mesa fiscal materializada.",
@@ -67,11 +77,23 @@ def reprocessar_apontamentos(
             "relatorio": resultado,
         }
 
+
     except Exception as e:
+
+        import traceback
+
+        print("[DBG REPROCESSAR][ERRO]", repr(e), flush=True)
+
+        traceback.print_exc()
+
         db.rollback()
+
         raise HTTPException(
+
             status_code=500,
+
             detail=f"Erro ao reprocessar pelo pipeline novo: {e}",
+
         )
 
 @router.get(
@@ -213,7 +235,12 @@ def listar_apontamentos(
                 {
                     "id": int(a.id),
                     "versao_id": int(a.versao_id),
-                    "registro_id": int(a.registro_id),
+                    "registro_id": int(a.registro_id) if a.registro_id is not None else None,
+                    "item_fiscal_consolidado_id": (
+                        int(a.item_fiscal_consolidado_id)
+                        if getattr(a, "item_fiscal_consolidado_id", None) is not None
+                        else None
+                    ),
                     "tipo": a.tipo,
                     "codigo": a.codigo,
                     "descricao": a.descricao,

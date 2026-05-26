@@ -278,50 +278,10 @@ def inserir_c170s_da_nf_encadeados(
     dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
     acao = "INSERT_AFTER"
 
-    log.info(
-        "C170 bloco start nf_id=%s versao_origem_id=%s linha_c100=%s registro_id_c100=%s total_itens=%s contexto=%s",
-        getattr(nf, "id", None),
-        versao_origem_id,
-        linha_ref_alvo,
-        registro_id_alvo,
-        len(itens),
-        contexto,
-    )
-
-    log.debug(
-        "C170 itens origem nf_id=%s itens=%s",
-        getattr(nf, "id", None),
-        [
-            {
-                "item_id": int(getattr(it, "id", 0) or 0),
-                "num_item": getattr(it, "num_item", None),
-                "cod_item": getattr(it, "cod_item", None),
-                "descricao": getattr(it, "descricao", None),
-                "cfop": getattr(it, "cfop", None),
-                "cst_icms": getattr(it, "cst_icms", None),
-                "aliq_icms": str(getattr(it, "aliq_icms", None)),
-                "vl_item": str(getattr(it, "vl_item", None)),
-                "vl_desc": str(getattr(it, "vl_desc", None)),
-                "vl_icms": str(getattr(it, "vl_icms", None)),
-                "qtd": str(getattr(it, "qtd", None)),
-                "unid": getattr(it, "unid", None),
-                "cod_nat": getattr(it, "cod_nat", None),
-                "cod_cta": getattr(it, "cod_cta", None),
-            }
-            for it in itens
-        ],
-    )
 
     for idx, it in enumerate(itens, start=1):
         item_id = int(getattr(it, "id", 0) or 0)
-        log.debug(
-            "C170 item loop idx=%s nf_id=%s item_id=%s cod_item=%s cfop=%s",
-            idx,
-            getattr(nf, "id", None),
-            item_id,
-            getattr(it, "cod_item", None),
-            getattr(it, "cfop", None),
-        )
+
         if item_id and _ja_existe_revisao_insert_para_item(
                 db,
                 versao_origem_id=int(versao_origem_id),
@@ -345,12 +305,6 @@ def inserir_c170s_da_nf_encadeados(
             aliq_cofins=aliq_cofins,
         )
 
-        log.debug(
-            "C170 linha nova nf_id=%s item_id=%s linha_nova=%s",
-            getattr(nf, "id", None),
-            int(getattr(it, "id", 0) or 0),
-            linha_nova,
-        )
 
         meta = None
         if str(contexto or "").strip().upper() == "LC192":
@@ -384,14 +338,6 @@ def inserir_c170s_da_nf_encadeados(
         db.add(rv)
         db.flush()
 
-        log.info(
-            "C170 revisão gravada rv_id=%s nf_id=%s item_id=%s registro_id=%s linha_referencia=%s",
-            rv.id,
-            getattr(nf, "id", None),
-            int(getattr(it, "id", 0) or 0),
-            rv.registro_id,
-            rv.revisao_json.get("linha_referencia"),
-        )
 
         total_inseridos += 1
 
@@ -411,15 +357,6 @@ def inserir_c170s_da_nf_encadeados(
                 break
 
         if linha_c170_inserido:
-            log.debug(
-                "C170 pos-overlay ok rv_id=%s nf_id=%s item_id=%s linha=%s registro_id=%s revisao_id=%s",
-                rv.id,
-                getattr(nf, "id", None),
-                int(getattr(it, "id", 0) or 0),
-                getattr(linha_c170_inserido, "linha", None),
-                getattr(linha_c170_inserido, "registro_id", None),
-                getattr(linha_c170_inserido, "revisao_id", None),
-            )
 
             registro_id_alvo = getattr(linha_c170_inserido, "registro_id", None)
             linha_ref_alvo = int(getattr(linha_c170_inserido, "linha", 0) or 0)
@@ -434,33 +371,8 @@ def inserir_c170s_da_nf_encadeados(
                 registro_id_alvo,
             )
 
-    log.info(
-        "C170 bloco final nf_id=%s total_inseridos=%s linha_fim_bloco=%s registro_id_fim_bloco=%s",
-        getattr(nf, "id", None),
-        total_inseridos,
-        linha_ref_alvo,
-        registro_id_alvo,
-    )
 
-    log.debug(
-        "C170 bloco final snapshot nf_id=%s snapshot=%s",
-        getattr(nf, "id", None),
-        [
-            {
-                "linha": getattr(l, "linha", None),
-                "reg": getattr(l, "reg", None),
-                "registro_id": getattr(l, "registro_id", None),
-                "revisao_id": getattr(l, "revisao_id", None),
-                "conteudo": getattr(l, "conteudo", None),
-            }
-            for l in carregar_linhas_logicas_com_revisoes_e_insert(
-                db,
-                versao_origem_id=int(versao_origem_id),
-                versao_final_id=None,
-            )
-            if str(getattr(l, "reg", "")).upper() in ("C100", "C170")
-        ],
-    )
+
 
     return {
         "total_inseridos": total_inseridos,
@@ -486,38 +398,8 @@ def inserir_c170s_da_nf_encadeados_manual(
     dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
     acao = "INSERT_AFTER"
 
-    log.info(
-        "C170 bloco start nf_id=%s versao_origem_id=%s linha_c100=%s registro_id_c100=%s total_itens=%s",
-        getattr(nf, "id", None),
-        versao_origem_id,
-        linha_ref_alvo,
-        registro_id_alvo,
-        len(itens),
-    )
 
-    log.debug(
-        "C170 itens origem nf_id=%s itens=%s",
-        getattr(nf, "id", None),
-        [
-            {
-                "item_id": int(getattr(it, "id", 0) or 0),
-                "num_item": getattr(it, "num_item", None),
-                "cod_item": getattr(it, "cod_item", None),
-                "descricao": getattr(it, "descricao", None),
-                "cfop": getattr(it, "cfop", None),
-                "cst_icms": getattr(it, "cst_icms", None),
-                "aliq_icms": str(getattr(it, "aliq_icms", None)),
-                "vl_item": str(getattr(it, "vl_item", None)),
-                "vl_desc": str(getattr(it, "vl_desc", None)),
-                "vl_icms": str(getattr(it, "vl_icms", None)),
-                "qtd": str(getattr(it, "qtd", None)),
-                "unid": getattr(it, "unid", None),
-                "cod_nat": getattr(it, "cod_nat", None),
-                "cod_cta": getattr(it, "cod_cta", None),
-            }
-            for it in itens
-        ],
-    )
+
 
     for idx, it in enumerate(itens, start=1):
         log.debug(
@@ -539,12 +421,6 @@ def inserir_c170s_da_nf_encadeados_manual(
             aliq_cofins="7,6000",
         )
 
-        log.debug(
-            "C170 linha nova nf_id=%s item_id=%s linha_nova=%s",
-            getattr(nf, "id", None),
-            int(getattr(it, "id", 0) or 0),
-            linha_nova,
-        )
 
         meta = None
 
@@ -579,14 +455,6 @@ def inserir_c170s_da_nf_encadeados_manual(
         db.add(rv)
         db.flush()
 
-        log.info(
-            "C170 revisão gravada rv_id=%s nf_id=%s item_id=%s registro_id=%s linha_referencia=%s",
-            rv.id,
-            getattr(nf, "id", None),
-            int(getattr(it, "id", 0) or 0),
-            rv.registro_id,
-            rv.revisao_json.get("linha_referencia"),
-        )
 
         total_inseridos += 1
 
@@ -628,34 +496,6 @@ def inserir_c170s_da_nf_encadeados_manual(
                 linha_ref_alvo,
                 registro_id_alvo,
             )
-
-    log.info(
-        "C170 bloco final nf_id=%s total_inseridos=%s linha_fim_bloco=%s registro_id_fim_bloco=%s",
-        getattr(nf, "id", None),
-        total_inseridos,
-        linha_ref_alvo,
-        registro_id_alvo,
-    )
-
-    log.debug(
-        "C170 bloco final snapshot nf_id=%s snapshot=%s",
-        getattr(nf, "id", None),
-        [
-            {
-                "linha": getattr(l, "linha", None),
-                "reg": getattr(l, "reg", None),
-                "registro_id": getattr(l, "registro_id", None),
-                "revisao_id": getattr(l, "revisao_id", None),
-                "conteudo": getattr(l, "conteudo", None),
-            }
-            for l in carregar_linhas_logicas_com_revisoes_e_insert(
-                db,
-                versao_origem_id=int(versao_origem_id),
-                versao_final_id=None,
-            )
-            if str(getattr(l, "reg", "")).upper() in ("C100", "C170")
-        ],
-    )
 
     return {
         "total_inseridos": total_inseridos,

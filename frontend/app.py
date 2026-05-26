@@ -610,6 +610,83 @@ elif page == "0 — Importar SPED":
         st.table(import_errors)
 
     # ==========================================================
+    # ECD — BASE CONTÁBIL
+    # ==========================================================
+    st.divider()
+    st.subheader("Importar ECD")
+    st.caption(
+        "Importe a Escrituração Contábil Digital para alimentar a base contábil "
+        "(plano de contas, saldos, DRE e vínculos contábeis)."
+    )
+
+    empresa_id_ecd = st.session_state.get("selected_empresa_id")
+
+    if not empresa_id_ecd:
+        st.warning("Selecione ou importe primeiro uma empresa/versão para vincular a ECD.")
+    else:
+        st.info(f"ECD será vinculada à empresa ID {empresa_id_ecd}.")
+
+    up_ecd = st.file_uploader(
+        "Selecione o arquivo ECD (.txt)",
+        type=["txt"],
+        accept_multiple_files=False,
+        key="upload_ecd",
+    )
+
+    if st.button("✅ Importar ECD", disabled=not up_ecd or not empresa_id_ecd):
+        with st.spinner("Importando ECD..."):
+            try:
+                r = post(
+                    "/ecd/importar",
+                    files={
+                        "file": (up_ecd.name, up_ecd.getvalue(), "text/plain"),
+                    },
+                    data={
+                        "empresa_id": str(empresa_id_ecd),
+                    },
+                )
+
+                if r:
+                    data = r.json()
+                    st.session_state.ecd_import_response = data
+
+                    if data.get("ok"):
+                        st.success(
+                            f"ECD importada: {data.get('nome_arquivo')} | "
+                            f"ano={data.get('ano')} | "
+                            f"linhas={data.get('total_linhas')}"
+                        )
+                    else:
+                        st.warning("ECD não importada.")
+                else:
+                    st.warning("Não foi possível importar a ECD.")
+
+            except Exception as e:
+                st.error(f"Erro ao importar ECD: {e}")
+
+    ecd_resp = st.session_state.get("ecd_import_response")
+
+    if isinstance(ecd_resp, dict):
+        st.markdown("### 📦 Resumo da importação ECD")
+
+        st.write(f"**Empresa:** {ecd_resp.get('nome_empresa')} (ID {ecd_resp.get('empresa_id')})")
+        st.write(f"**CNPJ:** {ecd_resp.get('cnpj')}")
+        st.write(f"**Ano:** {ecd_resp.get('ano')}")
+        st.write(f"**Período:** {ecd_resp.get('periodo_inicio')} a {ecd_resp.get('periodo_fim')}")
+        st.write(f"**Arquivo:** {ecd_resp.get('nome_arquivo')}")
+        st.write(f"**Total de linhas:** {ecd_resp.get('total_linhas')}")
+
+        totais = ecd_resp.get("totais_importados") or {}
+        if totais:
+            st.markdown("#### Totais importados")
+            st.table([totais])
+
+        ignorados = ecd_resp.get("registros_ignorados") or {}
+        if ignorados:
+            st.markdown("#### Registros ignorados/filtros")
+            st.table([ignorados])
+
+    # ==========================================================
     # FOTO RECUPERAÇÃO
     # ==========================================================
     st.divider()

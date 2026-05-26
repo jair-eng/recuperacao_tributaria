@@ -85,11 +85,7 @@ def garantir_0190_para_item(
         versao_origem_id=versao_origem_id,
         unid=unid_final,
     ):
-        print(
-            "[DBG 0190 JA_EXISTE]",
-            {"versao_origem_id": versao_origem_id, "unid": unid_final},
-            flush=True,
-        )
+
         return unid_final
 
     registro_id_alvo, linha_ref = _resolver_ancora_para_0190(
@@ -159,11 +155,7 @@ def garantir_0200_para_item(
         versao_origem_id=versao_origem_id,
         cod_item=cod_item_final,
     ):
-        print(
-            "[DBG 0200 JA_EXISTE]",
-            {"versao_origem_id": versao_origem_id, "cod_item": cod_item_final},
-            flush=True,
-        )
+
         return cod_item_final
 
     registro_id_alvo, linha_ref = _resolver_ancora_para_0200(

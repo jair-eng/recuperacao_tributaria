@@ -6,6 +6,7 @@ from app.db.models import (
     ContextoFiscalVersao,
     ItemFiscalConsolidado, Empresa
 )
+from app.domain.ecd.ecd_services import obter_contexto_contabil_por_cod_cta, aplicar_ctx_ecd_no_item
 from app.domain.fiscal.catalogo.classificacao_fiscal import classificar_item_fiscal
 from app.domain.sped.contextos.contexto_competencia import montar_contexto_competencia
 from app.domain.sped.maps.icms_item_map import montar_mapa_icms_item, buscar_icms_item_em_mapa
@@ -215,6 +216,7 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             cod_cta_original=cod_cta_original,
             contabil_0500=ctx_competencia.contabil_0500,
         )
+
         semantica_fiscal = {
             "contrib": classificar_item_fiscal(
                 meta={
@@ -304,6 +306,14 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
                 }
             },
         )
+        ctx_ecd = obter_contexto_contabil_por_cod_cta(
+            db,
+            empresa_id=versao.empresa_id,
+            periodo=periodo,
+            cod_cta=item.cod_cta,
+        )
+
+        aplicar_ctx_ecd_no_item(item, ctx_ecd)
         itens_contrib_materializados.append(item)
         db.add(item)
         qtd_itens += 1
@@ -329,6 +339,16 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             item.cod_cta_origem = conta_resolvida.origem
             item.cod_cta_confianca = conta_resolvida.confianca
             item.cod_cta_justificativa = conta_resolvida.justificativa
+
+            ctx_ecd = obter_contexto_contabil_por_cod_cta(
+                db,
+                empresa_id=versao.empresa_id,
+                periodo=item.periodo,
+                cod_cta=item.cod_cta,
+            )
+
+            aplicar_ctx_ecd_no_item(item, ctx_ecd)
+
 
     for icms_item in mapa_icms["itens"]:
         chave_icms = (

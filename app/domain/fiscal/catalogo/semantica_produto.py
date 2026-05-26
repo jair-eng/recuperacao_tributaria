@@ -41,7 +41,11 @@ def eh_embalagem(meta, catalogo):
 
 
 def eh_combustivel(meta: Dict[str, Any], catalogo: Any) -> bool:
-    return "NCM_COMBUSTIVEIS" in _grupos_ncm(meta, catalogo)
+
+    grupos = _grupos_ncm(meta, catalogo)
+
+
+    return "NCM_COMBUSTIVEIS" in grupos
 
 
 def eh_diesel(meta: Dict[str, Any], catalogo: Any) -> bool:
@@ -112,11 +116,6 @@ def eh_agua_mineral(meta: Dict[str, Any], catalogo: Any) -> bool:
 def eh_vasilhame_gas(meta: Dict[str, Any], catalogo: Any) -> bool:
     return "NCM_VASILHAME_GAS" in _grupos_ncm(meta, catalogo)
 
-
-def eh_acessorio_gas(meta: Dict[str, Any], catalogo: Any) -> bool:
-    return "NCM_ACESSORIOS_GAS" in _grupos_ncm(meta, catalogo)
-
-
 def eh_maquininha_cartao(meta: Dict[str, Any], catalogo: Any) -> bool:
     return "NCM_MAQUININAS_CARTAO" in _grupos_ncm(meta, catalogo)
 
@@ -172,7 +171,6 @@ def classificar_produto_fiscal(
         "peca_moto": eh_peca_moto(meta, catalogo),
         "agua_mineral": eh_agua_mineral(meta, catalogo),
         "vasilhame_gas": eh_vasilhame_gas(meta, catalogo),
-        "acessorio_gas": eh_acessorio_gas(meta, catalogo),
         "maquininha_cartao": eh_maquininha_cartao(meta, catalogo),
         "fertilizante": eh_fertilizante(meta, catalogo),
         "cafe": eh_cafe(meta, catalogo),

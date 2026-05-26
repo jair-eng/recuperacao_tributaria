@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import BigInteger, Integer, String, Text, DECIMAL, Boolean, Enum, ForeignKey, Index
+from typing import Optional
 from app.db.models.base import Base
 from sqlalchemy.dialects.mysql import JSON
 
@@ -9,7 +10,9 @@ class EfdApontamento(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
     versao_id: Mapped[int] = mapped_column(Integer, ForeignKey("efd_versao.id"), nullable=False)
-    registro_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("efd_registro.id"), nullable=False)
+    registro_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("efd_registro.id"), nullable=True)
+    item_fiscal_consolidado_id: Mapped[Optional[int]] = mapped_column(Integer,ForeignKey("item_fiscal_consolidado.id"),
+        nullable=True,)
 
     tipo: Mapped[str] = mapped_column(
         String(20),

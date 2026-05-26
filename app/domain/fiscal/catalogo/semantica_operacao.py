@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
-def eh_entrada(meta: Dict[str, Any], catalogo: Any) -> bool:
+def eh_entrada(meta, catalogo):
+
     cfop = meta.get("cfop")
 
     grupos = catalogo.grupos_cfop(cfop)
+
 
     return bool({
         "CFOP_ENTRADA",

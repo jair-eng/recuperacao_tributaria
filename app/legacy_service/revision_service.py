@@ -152,8 +152,24 @@ def materializar_versao_revisada(*, db: Session, versao_origem_id: int) -> int:
             .scalar()
         ) or 0
 
+        empresa_id = (
+                getattr(origem, "empresa_id", None)
+                or getattr(getattr(origem, "arquivo", None), "empresa_id", None)
+        )
+
+        if not empresa_id:
+            raise ValueError(
+                f"empresa_id não encontrado para versao_origem_id={origem.id}"
+            )
+
         revisada = EfdVersao(
             arquivo_id=int(origem.arquivo_id),
+
+            empresa_id=int(empresa_id),
+            periodo=getattr(origem, "periodo", None),
+            tipo_arquivo=getattr(origem, "tipo_arquivo", None),
+            dominio=getattr(origem, "dominio", None),
+
             numero=int(max_num) + 1,
             status="EM_REVISAO",
             retifica_de_versao_id=int(versao_origem_id),

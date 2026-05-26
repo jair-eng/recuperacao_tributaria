@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.db.models import ItemFiscalConsolidado
+from app.db.models import ItemFiscalConsolidado, EfdApontamento
 from app.domain.sped.services.contexto_fiscal.materializar_contexto_fiscal import materializar_contexto_fiscal
 from app.domain.workflow.gerar_apontamentos_service import gerar_apontamentos_por_contexto
 
@@ -10,6 +10,11 @@ def preparar_revisao(
     db: Session,
     versao_id: int,
 ) -> dict:
+    db.query(EfdApontamento).filter(
+        EfdApontamento.versao_id == versao_id
+    ).delete(synchronize_session=False)
+
+    db.flush()
     materializar_contexto_fiscal(db, versao_id)
 
     gerar_apontamentos_por_contexto(

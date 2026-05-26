@@ -1,3 +1,4 @@
+from app.domain.ecd.ecd_index import build_ecd_indexes
 from app.domain.ecd.ecd_parser import parse_ecd_lines
 
 
@@ -36,3 +37,19 @@ for x in result.dres_j150[:5]:
 
 print("\n========== IGNORADOS ==========")
 print(result.registros_ignorados)
+
+indexes = build_ecd_indexes(result)
+
+print("\n========== INDEX CONTA 470 ==========")
+print(indexes.contas_por_cod_cta.get("470"))
+
+print("\n========== INDEX SALDOS 470 ==========")
+for x in indexes.saldos_por_cod_cta.get("470", [])[:5]:
+    print(x)
+
+print("\n========== INDEX DRE 470 ==========")
+for x in indexes.dre_por_cod_agl.get("470", [])[:5]:
+    print(x)
+
+print("\n========== INDEX VINCULO 470 ==========")
+print(indexes.vinculos_agl_por_cod_cta.get("470"))
