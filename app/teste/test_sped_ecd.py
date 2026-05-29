@@ -1,55 +1,43 @@
-from app.domain.ecd.ecd_index import build_ecd_indexes
-from app.domain.ecd.ecd_parser import parse_ecd_lines
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from app.db.models import EcdResultadoI355Db
+from app.db.models.ecd_conta_empresa import EcdContaEmpresa
+from app.domain.ecd.ecd_gap_service import carregar_linhas_ecd_elegiveis_reais
+from app.db.session import SessionLocal
 
-
-with open(r"C:\Users\jcbn1\Downloads\teste\ecd_teste.txt", "r", encoding="latin-1") as f:
-    linhas = f.readlines()
-
-result = parse_ecd_lines(
-    linhas,
-    incluir_saldos_i155=True,
-    incluir_resultados_i355=True,
-    cod_ctas_relevantes={"470", "504", "5"},
+db = SessionLocal()
+dados = carregar_linhas_ecd_elegiveis_reais(
+    db=db,
+    empresa_id=1,
+    periodo="202211",
 )
 
-print("\n========== CONTAGEM ==========")
+print(f"TOTAL: {len(dados)}")
 
-for reg, qtd in sorted(result.contagem_por_registro.items()):
-    print(reg, qtd)
+for d in dados[:20]:
+    print(d)
 
-print("\n========== I050 ==========")
-print("total:", len(result.contas_i050))
+contas = (
+    db.query(EcdContaEmpresa)
+    .filter(EcdContaEmpresa.empresa_id == 1)
+    .filter(EcdContaEmpresa.periodo.like("2022%"))
+    .filter(
+        or_(
+            EcdContaEmpresa.elegivel_credito_sugerido == True,
+            EcdContaEmpresa.elegivel_credito_confirmado == True,
+        )
+    )
+    .all()
+)
 
-for x in result.contas_i050[:5]:
-    print(x)
+print("CONTAS ELEGIVEIS EMPRESA 1:", len(contas))
 
-print("\n========== I155 ==========")
-print("total:", len(result.saldos_i155))
+for c in contas:
+    print(c.cod_cta, c.nome_cta, c.grupo_conta_sugerido)
 
-for x in result.saldos_i155[:5]:
-    print(x)
+linha = db.query(EcdResultadoI355Db).first()
 
-print("\n========== J150 ==========")
-print("total:", len(result.dres_j150))
-
-for x in result.dres_j150[:5]:
-    print(x)
-
-print("\n========== IGNORADOS ==========")
-print(result.registros_ignorados)
-
-indexes = build_ecd_indexes(result)
-
-print("\n========== INDEX CONTA 470 ==========")
-print(indexes.contas_por_cod_cta.get("470"))
-
-print("\n========== INDEX SALDOS 470 ==========")
-for x in indexes.saldos_por_cod_cta.get("470", [])[:5]:
-    print(x)
-
-print("\n========== INDEX DRE 470 ==========")
-for x in indexes.dre_por_cod_agl.get("470", [])[:5]:
-    print(x)
-
-print("\n========== INDEX VINCULO 470 ==========")
-print(indexes.vinculos_agl_por_cod_cta.get("470"))
+if linha:
+    print(linha.__dict__)
+else:
+    print("SEM REGISTROS")

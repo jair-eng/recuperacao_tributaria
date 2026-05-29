@@ -13,7 +13,7 @@ from app.domain.sped.maps.icms_item_map import montar_mapa_icms_item, buscar_icm
 from app.domain.sped.maps.reg0150_map import IDX_0150
 from app.domain.sped.maps.reg0200_map import IDX_0200
 from app.domain.sped.maps.c170_map import IDX_C170
-from app.domain.sped.services.contabil.resolver_cod_cta_service import resolver_cod_cta_v2, ORIGEM_NAO_RESOLVIDO, \
+from app.domain.sped.services.resolver_cod_cta_service import resolver_cod_cta_v2, ORIGEM_NAO_RESOLVIDO, \
     montar_candidatos_mesma_natureza
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.utils.json_utils import campos_json

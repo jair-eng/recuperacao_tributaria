@@ -16,6 +16,12 @@ def get_sped_str(
 
     return str(dados[idx] or "").strip()
 
+def reg_linha_sped(linha: str) -> str:
+    partes = (linha or "").strip().split("|")
+    if len(partes) > 1:
+        return partes[1].strip()
+    return ""
+
 
 def extrair_dados_sped(reg: Any) -> list[Any]:
     if hasattr(reg, "dados"):

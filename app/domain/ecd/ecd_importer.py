@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 from sqlalchemy.orm import Session
+
+from app.domain.ecd.ecd_contas_materializador_service import materializar_contas_ecd_i050
 from app.domain.ecd.ecd_parser import parse_ecd_lines
 from app.db.models.ecd import (
     EcdArquivo,
@@ -92,6 +94,25 @@ def importar_ecd_arquivo(
                 cta=c.cta,
             )
         )
+    periodo_materializado = None
+
+    if periodo_inicio and len(periodo_inicio) == 8:
+        periodo_materializado = (
+                periodo_inicio[4:8] + periodo_inicio[2:4]
+        )
+
+    total_contas_materializadas = materializar_contas_ecd_i050(
+        db,
+        empresa_id=empresa_id,
+        arquivo_id=ecd.id,
+        periodo=periodo_materializado,
+        contas_i050=parsed.contas_i050,
+    )
+
+    print(
+        f"[ECD_CONTAS] contas materializadas={total_contas_materializadas}",
+        flush=True,
+    )
 
     for v in parsed.vinculos_i052:
         db.add(
