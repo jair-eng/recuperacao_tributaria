@@ -1,19 +1,29 @@
-from decimal import Decimal, ROUND_HALF_UP
-from decimal import Decimal, InvalidOperation
+
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
-
 def to_decimal(valor: Any) -> Decimal:
-
     if valor is None:
         return Decimal("0")
+
+    if isinstance(valor, Decimal):
+        return valor
+
+    if isinstance(valor, int):
+        return Decimal(valor)
+
+    if isinstance(valor, float):
+        return Decimal(str(valor))
 
     s = str(valor).strip()
 
     if not s:
         return Decimal("0")
 
-    s = s.replace(".", "").replace(",", ".")
+    s = s.replace("R$", "").replace(" ", "")
+
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
 
     try:
         return Decimal(s)

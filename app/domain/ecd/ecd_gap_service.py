@@ -61,7 +61,7 @@ def gerar_diagnostico_gap_ecd_efd(
         if not reg:
             continue
 
-        if reg.startswith("M"):
+        if reg and reg.startswith("M"):
             linhas_bloco_m.append(linha)
 
     # ============================================================
@@ -109,9 +109,9 @@ def gerar_diagnostico_gap_ecd_efd(
     periodo_cmp = comparativo.get(periodo_norm) or {}
 
     for nat, dados in periodo_cmp.items():
-        valor_ecd = dados.get("valor_ecd_elegivel") or 0
-        valor_efd = dados.get("base_efd_declarada") or 0
-        gap = dados.get("gap_base") or 0
+        valor_ecd = Decimal(str(dados.get("valor_ecd_elegivel") or "0"))
+        valor_efd = Decimal(str(dados.get("base_efd_declarada") or "0"))
+        gap = Decimal(str(dados.get("gap_base") or "0"))
 
         resumo["total_ecd_elegivel"] += valor_ecd
         resumo["total_efd_declarada"] += valor_efd

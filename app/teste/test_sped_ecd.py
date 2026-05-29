@@ -1,43 +1,40 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
-from app.db.models import EcdResultadoI355Db
-from app.db.models.ecd_conta_empresa import EcdContaEmpresa
-from app.domain.ecd.ecd_gap_service import carregar_linhas_ecd_elegiveis_reais
+from decimal import Decimal
+from app.domain.ecd.ecd_gap_service import carregar_linhas_ecd_elegiveis_reais, gerar_diagnostico_gap_ecd_efd, \
+    gerar_diagnostico_gap_ecd_efd_por_versao
 from app.db.session import SessionLocal
+from app.utils.numbers import to_decimal
 
 db = SessionLocal()
-dados = carregar_linhas_ecd_elegiveis_reais(
+
+linhas_ecd = carregar_linhas_ecd_elegiveis_reais(
     db=db,
     empresa_id=1,
     periodo="202211",
 )
 
-print(f"TOTAL: {len(dados)}")
-
-for d in dados[:20]:
-    print(d)
-
-contas = (
-    db.query(EcdContaEmpresa)
-    .filter(EcdContaEmpresa.empresa_id == 1)
-    .filter(EcdContaEmpresa.periodo.like("2022%"))
-    .filter(
-        or_(
-            EcdContaEmpresa.elegivel_credito_sugerido == True,
-            EcdContaEmpresa.elegivel_credito_confirmado == True,
-        )
-    )
-    .all()
+resultado = gerar_diagnostico_gap_ecd_efd_por_versao(
+    db=db,
+    versao_id=4,
+    periodo="202211",
+    linhas_ecd_classificadas=linhas_ecd,
 )
 
-print("CONTAS ELEGIVEIS EMPRESA 1:", len(contas))
+print(resultado["resumo"])
+print(resultado["comparativo"])
 
-for c in contas:
-    print(c.cod_cta, c.nome_cta, c.grupo_conta_sugerido)
 
-linha = db.query(EcdResultadoI355Db).first()
 
-if linha:
-    print(linha.__dict__)
-else:
-    print("SEM REGISTROS")
+testes = [
+    None,
+    "",
+    "0",
+    "4500",
+    "4500.00",
+    "4.500,00",
+    4500,
+    4500.00,
+    Decimal("4500.00"),
+]
+
+for t in testes:
+    print(repr(t), "=>", to_decimal(t))
