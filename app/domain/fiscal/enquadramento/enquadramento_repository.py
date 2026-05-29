@@ -17,6 +17,8 @@ def buscar_enquadramento_por_cenario(
     if not codigo_cenario:
         return None
 
+    # esse select ja busca no banco a natureza e o codigo do credito
+
     sql = text("""
         SELECT
             codigo_cenario,
@@ -44,8 +46,14 @@ def buscar_enquadramento_por_cenario(
 
     out = {
         "codigo_cenario": row["codigo_cenario"],
+
         "tipo_credito_codigo": row["tipo_credito_codigo"],
         "base_credito_codigo": row["base_credito_codigo"],
+
+        # aliases para o restante do sistema
+        "cod_cred": row["tipo_credito_codigo"],
+        "nat_bc_cred": row["base_credito_codigo"],
+
         "cst_pis_destino": row["cst_pis_destino"],
         "cst_cofins_destino": row["cst_cofins_destino"],
         "aliq_pis": float(row["aliq_pis"] or 0),

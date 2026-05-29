@@ -359,3 +359,48 @@ def carregar_linhas_ecd_com_natureza_real(
         )
 
     return linhas
+
+def montar_contexto_gap_ecd_efd(
+    db,
+    *,
+    empresa_id: int,
+    versao_id: int,
+    periodo: str,
+) -> dict:
+    linhas_ecd = carregar_linhas_ecd_com_natureza_real(
+        db=db,
+        empresa_id=empresa_id,
+        periodo=periodo,
+    )
+
+    diagnostico = gerar_diagnostico_gap_ecd_efd_por_versao(
+        db=db,
+        versao_id=versao_id,
+        periodo=periodo,
+        linhas_ecd_classificadas=linhas_ecd,
+    )
+
+    por_natureza = {}
+
+    periodo_norm = diagnostico["resumo"]["periodo"]
+    comparativo = diagnostico["comparativo"].get(periodo_norm) or {}
+
+    for nat, dados in comparativo.items():
+        gap = dados.get("gap_base") or Decimal("0")
+
+        por_natureza[nat] = {
+            "nat_bc_cred": nat,
+            "tem_gap": gap > 0,
+            "valor_gap": gap,
+            "status": dados.get("status"),
+            "valor_ecd": dados.get("valor_ecd_elegivel"),
+            "valor_efd": dados.get("base_efd_declarada"),
+            "contas_ecd": (dados.get("ecd") or {}).get("codigos_cta", []),
+            "origens": (dados.get("ecd") or {}).get("origens", []),
+        }
+
+    return {
+        "periodo": periodo_norm,
+        "resumo": diagnostico["resumo"],
+        "por_natureza": por_natureza,
+    }

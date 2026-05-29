@@ -156,6 +156,7 @@ def _aplicar_corretiva_so_icms_v2(
         versao_origem_id=versao_id,
     )
 
+    enq = meta.get("enquadramento") or {}
     res_bloco = _inserir_bloco_nf_icms_na_efd(
         db,
         versao_origem_id=versao_id,
@@ -168,8 +169,12 @@ def _aplicar_corretiva_so_icms_v2(
         contexto=meta.get("codigo_cenario") or meta.get("cenario"),
         aliq_pis=str((meta.get("enquadramento") or {}).get("aliq_pis") or ""),
         aliq_cofins=str((meta.get("enquadramento") or {}).get("aliq_cofins") or ""),
+        cod_cred=enq.get("cod_cred"),
+        nat_bc_cred = enq.get("nat_bc_cred"),
         motivo_codigo="CORRETIVA_V2_SO_ICMS",
+
     )
+
 
     apontamento.resolvido = True
     db.add(apontamento)

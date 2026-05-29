@@ -78,6 +78,10 @@ def diagnosticar_credito_nao_aproveitado(
             "codigo_cenario": codigo_cenario,
             "fundamento_legal": cenario.get("fundamento_legal"),
             "enquadramento": enquadramento,
+
+            "cod_cred": enquadramento.get("cod_cred"),
+            "nat_bc_cred": enquadramento.get("nat_bc_cred"),
+
             "classificacao": classificacao,
             "cst_pis_atual": cst_pis_atual,
             "cst_cofins_atual": cst_cofins_atual,

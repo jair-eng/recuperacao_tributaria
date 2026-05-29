@@ -340,6 +340,8 @@ def _inserir_bloco_nf_icms_na_efd(
     fator_base_credito: float | None = None,
     aliq_pis: str | None = None,
     aliq_cofins: str | None = None,
+    cod_cred: str | None = None,
+    nat_bc_cred: str | None = None,
     motivo_codigo: str = "CONTRIB_SEM_C100_V1",
 ) -> Dict[str, Any]:
     chave = _only_digits(getattr(nf, "chave_nfe", None))

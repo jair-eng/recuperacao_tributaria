@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 
 from app.db.models import ItemFiscalConsolidado, EfdApontamento
+from app.domain.ecd.ecd_gap_service import montar_contexto_gap_ecd_efd
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.domain.fiscal.catalogo.classificacao_fiscal import classificar_item_fiscal
 from app.domain.fiscal.cenarios.avaliador_cenarios import avaliar_cenarios
@@ -29,11 +30,24 @@ def gerar_apontamentos_por_contexto(
         flush=True,
     )
 
+
     itens = (
         db.query(ItemFiscalConsolidado)
         .filter(ItemFiscalConsolidado.versao_id == versao_id)
         .all()
     )
+    empresa_id = itens[0].empresa_id if itens else None
+    periodo = itens[0].periodo if itens else None
+
+    contexto_gap_ecd = None
+
+    if empresa_id and periodo:
+        contexto_gap_ecd = montar_contexto_gap_ecd_efd(
+            db=db,
+            empresa_id=empresa_id,
+            versao_id=versao_id,
+            periodo=periodo,
+        )
 
     print(
         "[GERAR_APONTAMENTOS] itens=",
@@ -67,6 +81,13 @@ def gerar_apontamentos_por_contexto(
             db,
             cenario,
         )
+        enquadramento = cenario.get("enquadramento") or {}
+        nat_bc_cred = enquadramento.get("nat_bc_cred")
+
+        if contexto_gap_ecd and nat_bc_cred:
+            meta["ecd_gap"] = (
+                contexto_gap_ecd.get("por_natureza", {}).get(str(nat_bc_cred).zfill(2))
+            )
         diag = diagnosticar_credito_nao_aproveitado(
             meta=meta,
             classificacao=classificacao,
