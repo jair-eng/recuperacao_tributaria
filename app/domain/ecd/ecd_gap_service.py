@@ -9,7 +9,7 @@ from app.db.models import EfdRegistro, ContextoFiscalVersao, EcdSaldoI155Db, Ecd
 from app.db.models.ecd_conta_empresa import EcdContaEmpresa
 from app.db.models.ecd_conta_natureza_esperada import EcdContaNaturezaEsperada
 from app.domain.ecd.ecd_credito_analytics import (
-    somar_despesa_ecd_elegivel_por_mes_natureza,
+    somar_despesa_ecd_potencial_por_mes_natureza,
     montar_efd_declarada_por_mes_natureza,
     comparar_ecd_elegivel_vs_efd_declarada,
 )
@@ -45,7 +45,7 @@ def gerar_diagnostico_gap_ecd_efd(
     # 1) ECD elegível
     # ============================================================
 
-    ecd_por_mes_nat = somar_despesa_ecd_elegivel_por_mes_natureza(
+    ecd_por_mes_nat = somar_despesa_ecd_potencial_por_mes_natureza(
         linhas_ecd_classificadas
     )
 
@@ -237,12 +237,21 @@ def carregar_linhas_ecd_elegiveis_por_versao(
     return linhas
 
 
-def carregar_linhas_ecd_elegiveis_reais(
+def carregar_linhas_ecd_com_natureza_real(
     db: Session,
     *,
     empresa_id: int,
     periodo: str,
 ) -> list[dict]:
+
+    GRUPOS_ECD_EXCLUIR_GAP = {
+        "NAO_CLASSIFICADO",
+        "RECEITA",
+        "CMV",
+        "REDUTORA_RECEITA",
+        "ESTOQUE_REVENDA",
+    }
+
     periodo_norm = normalizar_periodo(periodo)
     if not periodo_norm:
         raise ValueError(f"Período inválido: {periodo}")
@@ -256,8 +265,8 @@ def carregar_linhas_ecd_elegiveis_reais(
         .filter(EcdContaEmpresa.periodo.like(f"{ano}%"))
         .filter(
             or_(
-                EcdContaEmpresa.elegivel_credito_confirmado == True,
-                EcdContaEmpresa.elegivel_credito_sugerido == True,
+                EcdContaEmpresa.grupo_conta_confirmado.isnot(None),
+                EcdContaEmpresa.grupo_conta_sugerido.isnot(None),
             )
         )
         .all()
@@ -266,13 +275,10 @@ def carregar_linhas_ecd_elegiveis_reais(
     linhas: list[dict] = []
 
     for conta in contas:
-        elegivel = (
-            conta.elegivel_credito_confirmado
-            if conta.elegivel_credito_confirmado is not None
-            else conta.elegivel_credito_sugerido
-        )
 
-        if not elegivel:
+        grupo = conta.grupo_conta_confirmado or conta.grupo_conta_sugerido
+
+        if grupo in GRUPOS_ECD_EXCLUIR_GAP:
             continue
 
         natureza = (
@@ -329,6 +335,11 @@ def carregar_linhas_ecd_elegiveis_reais(
 
         if valor <= 0:
             continue
+        elegivel_credito = bool(
+            conta.elegivel_credito_confirmado
+            if conta.elegivel_credito_confirmado is not None
+            else conta.elegivel_credito_sugerido
+        )
 
         linhas.append(
             {
@@ -339,7 +350,8 @@ def carregar_linhas_ecd_elegiveis_reais(
                 "tem_natureza": tem_natureza,
                 "natureza_descricao": getattr(natureza, "natureza_descricao", None),
                 "valor": valor,
-                "elegivel_credito": True,
+                "potencial_credito": tem_natureza,
+                "elegivel_credito": elegivel_credito,
                 "origem": origem_valor,
                 "categoria": conta.categoria_confirmada or conta.categoria_sugerida,
                 "grupo": conta.grupo_conta_confirmado or conta.grupo_conta_sugerido,

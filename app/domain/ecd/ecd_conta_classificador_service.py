@@ -52,7 +52,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="MateriaPrima",
             grupo_conta_sugerido="MATERIA_PRIMA",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["02"],
             fundamento_sugerido="Essencialidade",
         )
@@ -62,7 +62,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="MercadoriasInsumoConsumo",
             grupo_conta_sugerido="INSUMO_OPERACIONAL",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["02"],
             fundamento_sugerido="Essencialidade",
         )
@@ -87,7 +87,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="EnergiaEletricaOperacional",
             grupo_conta_sugerido="ENERGIA_OPERACIONAL",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["04"],
             fundamento_sugerido="Essencialidade",
         )
@@ -97,7 +97,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="CombustiveisLubrificantes",
             grupo_conta_sugerido="COMBUSTIVEL_LUBRIFICANTE",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["02"],
             fundamento_sugerido="Essencialidade",
         )
@@ -107,7 +107,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="MaterialUsoConsumo",
             grupo_conta_sugerido="MATERIAL_USO_CONSUMO",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["02"],
             fundamento_sugerido="Essencialidade",
         )
@@ -117,7 +117,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="ServicosTerceirosOperacionais",
             grupo_conta_sugerido="SERVICOS_TERCEIROS",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["03"],
             fundamento_sugerido="Essencialidade",
         )
@@ -127,7 +127,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="DepreciacaoFrota",
             grupo_conta_sugerido="DEPRECIACAO_FROTA",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["09", "10"],
             fundamento_sugerido="BemDeCapital",
         )
@@ -137,7 +137,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="PecasManutencaoFrota",
             grupo_conta_sugerido="MANUTENCAO_OPERACIONAL",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["02", "03"],
             fundamento_sugerido="Essencialidade",
         )
@@ -147,7 +147,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="SegurosOperacionais",
             grupo_conta_sugerido="SEGURO_OPERACIONAL",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["03", "13"],
             fundamento_sugerido="RelevanciaImposicaoLegal",
         )
@@ -157,7 +157,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="SubcontratacaoFrete",
             grupo_conta_sugerido="FRETE_SUBCONTRATACAO",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["14", "03"],
             fundamento_sugerido="Essencialidade",
         )
@@ -167,7 +167,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="RastreamentoTelemetria",
             grupo_conta_sugerido="RASTREAMENTO_TELEMETRIA",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["03"],
             fundamento_sugerido="Essencialidade",
         )
@@ -177,7 +177,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="ValeTransporteFretamento",
             grupo_conta_sugerido="VALE_TRANSPORTE_FRETAMENTO",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["17"],
             fundamento_sugerido="Essencialidade",
         )
@@ -187,7 +187,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="TreinamentoMOPP",
             grupo_conta_sugerido="TREINAMENTO_OPERACIONAL",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["13"],
             fundamento_sugerido="RelevanciaImposicaoLegal",
         )
@@ -197,7 +197,7 @@ def classificar_conta_ecd(
         resultado.update(
             categoria_sugerida="Pedagios",
             grupo_conta_sugerido="PEDAGIO_ESTACIONAMENTO",
-            elegivel_credito_sugerido=True,
+            elegivel_credito_sugerido=False,
             naturezas_esperadas_sugeridas=["03", "13"],
             fundamento_sugerido="Essencialidade",
         )

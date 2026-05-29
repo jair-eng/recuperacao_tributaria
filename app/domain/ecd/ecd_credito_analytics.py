@@ -12,7 +12,7 @@ from app.utils.numbers import to_decimal
 
 
 
-def somar_despesa_ecd_elegivel_por_mes_natureza(
+def somar_despesa_ecd_potencial_por_mes_natureza(
     linhas_ecd: Iterable[Dict[str, Any]],
 ) -> Dict[str, Dict[str, Dict[str, Any]]]:
     """
@@ -42,7 +42,7 @@ def somar_despesa_ecd_elegivel_por_mes_natureza(
         if not linha:
             continue
 
-        if not bool(linha.get("elegivel_credito")):
+        if not bool(linha.get("potencial_credito")):
             continue
 
         periodo = (
