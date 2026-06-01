@@ -15,17 +15,6 @@ from app.utils.numbers import to_decimal
 def somar_despesa_ecd_potencial_por_mes_natureza(
     linhas_ecd: Iterable[Dict[str, Any]],
 ) -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """
-    Soma despesas elegíveis da ECD agrupando por:
-
-    periodo_competencia -> nat_bc_cred
-
-    Espera linhas já classificadas/enquadradas contendo pelo menos:
-    - periodo ou competencia
-    - nat_bc_cred ou natureza_credito
-    - valor
-    - elegivel_credito True/False
-    """
 
     acumulado: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(
         lambda: defaultdict(
@@ -34,6 +23,10 @@ def somar_despesa_ecd_potencial_por_mes_natureza(
                 "qtd_linhas": 0,
                 "codigos_cta": set(),
                 "origens": set(),
+                "categorias": set(),
+                "grupos": set(),
+                "fundamentos": set(),
+                "naturezas_esperadas": set(),
             }
         )
     )
@@ -85,6 +78,22 @@ def somar_despesa_ecd_potencial_por_mes_natureza(
         if origem:
             item["origens"].add(str(origem))
 
+        categoria = linha.get("categoria")
+        if categoria:
+            item["categorias"].add(str(categoria))
+
+        grupo = linha.get("grupo")
+        if grupo:
+            item["grupos"].add(str(grupo))
+
+        fundamento = linha.get("fundamento")
+        if fundamento:
+            item["fundamentos"].add(str(fundamento))
+
+        for nat_esp in linha.get("naturezas_esperadas") or []:
+            if nat_esp:
+                item["naturezas_esperadas"].add(str(nat_esp).strip().zfill(2))
+
     resultado: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
     for periodo, por_nat in acumulado.items():
@@ -96,6 +105,10 @@ def somar_despesa_ecd_potencial_por_mes_natureza(
                 "qtd_linhas": dados["qtd_linhas"],
                 "codigos_cta": sorted(dados["codigos_cta"]),
                 "origens": sorted(dados["origens"]),
+                "categorias": sorted(dados["categorias"]),
+                "grupos": sorted(dados["grupos"]),
+                "fundamentos": sorted(dados["fundamentos"]),
+                "naturezas_esperadas": sorted(dados["naturezas_esperadas"]),
             }
 
     return resultado
@@ -169,6 +182,11 @@ def comparar_ecd_elegivel_vs_efd_declarada(
             else:
                 status = "EXCEDENTE_EFD"
 
+            categorias = dados_ecd.get("categorias") or []
+            grupos = dados_ecd.get("grupos") or []
+            fundamentos = dados_ecd.get("fundamentos") or []
+            naturezas_esperadas = dados_ecd.get("naturezas_esperadas") or []
+
             resultado[periodo][nat] = {
                 "periodo": periodo,
                 "nat_bc_cred": nat,
@@ -177,6 +195,13 @@ def comparar_ecd_elegivel_vs_efd_declarada(
                 "gap_base": gap_base.quantize(Decimal("0.01")),
                 "cobertura_pct": cobertura_pct,
                 "status": status,
+
+                # Enriquecimento ECD / catálogo
+                "categorias": categorias,
+                "grupos": grupos,
+                "fundamentos": fundamentos,
+                "naturezas_esperadas": naturezas_esperadas,
+
                 "ecd": dados_ecd,
                 "efd": dados_efd,
             }

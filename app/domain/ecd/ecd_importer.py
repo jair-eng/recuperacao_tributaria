@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy.orm import Session
 
+from app.db.models import Empresa
 from app.domain.ecd.ecd_contas_materializador_service import materializar_contas_ecd_i050
 from app.domain.ecd.ecd_parser import parse_ecd_lines
 from app.db.models.ecd import (
@@ -15,6 +16,7 @@ from app.db.models.ecd import (
     EcdDreJ150Db,
 )
 from app.utils.numbers import to_decimal
+from app.utils.strings import only_digits
 
 
 def importar_ecd_arquivo(
@@ -44,7 +46,21 @@ def importar_ecd_arquivo(
     periodo_inicio = ident.dt_ini if ident else None
     periodo_fim = ident.dt_fin if ident else None
     ano = periodo_inicio[-4:] if periodo_inicio and len(periodo_inicio) == 8 else None
+
     cnpj = ident.cnpj if ident else None
+    cnpj_limpo = only_digits(cnpj)
+    if not cnpj_limpo:
+        raise ValueError("ECD sem CNPJ válido na identificação.")
+    empresa = (
+        db.query(Empresa)
+        .filter(Empresa.cnpj == cnpj_limpo)
+        .first()
+    )
+
+    if empresa:
+        empresa_id = empresa.id
+    else:
+        raise ValueError(f"Empresa não encontrada para CNPJ da ECD: {cnpj}")
     nome_empresa = ident.nome if ident else None
 
     if sobrescrever and cnpj and periodo_inicio and periodo_fim:
@@ -52,7 +68,7 @@ def importar_ecd_arquivo(
             db.query(EcdArquivo)
             .filter(
                 EcdArquivo.empresa_id == empresa_id,
-                EcdArquivo.cnpj == cnpj,
+                EcdArquivo.cnpj == cnpj_limpo,
                 EcdArquivo.periodo_inicio == periodo_inicio,
                 EcdArquivo.periodo_fim == periodo_fim,
             )
@@ -71,7 +87,7 @@ def importar_ecd_arquivo(
         periodo_fim=periodo_fim,
         ano=ano,
         nome_arquivo=nome_arquivo or path.name,
-        cnpj=cnpj,
+        cnpj=cnpj_limpo,
         nome_empresa=nome_empresa,
         total_linhas=len(linhas),
     )

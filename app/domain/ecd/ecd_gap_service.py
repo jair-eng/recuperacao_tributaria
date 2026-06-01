@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict
 from sqlalchemy.orm import Session
 from decimal import Decimal
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 import calendar
 from app.db.models import EfdRegistro, ContextoFiscalVersao, EcdSaldoI155Db, EcdResultadoI355Db
 from app.db.models.ecd_conta_empresa import EcdContaEmpresa
-from app.db.models.ecd_conta_natureza_esperada import EcdContaNaturezaEsperada
+
 from app.domain.ecd.ecd_credito_analytics import (
     somar_despesa_ecd_potencial_por_mes_natureza,
     montar_efd_declarada_por_mes_natureza,
@@ -236,6 +236,46 @@ def carregar_linhas_ecd_elegiveis_por_versao(
 
     return linhas
 
+def buscar_naturezas_categoria_esperada(
+    db: Session,
+    *,
+    categoria: str,
+    grupo: str | None = None,
+) -> list[dict]:
+    categoria = str(categoria or "").strip()
+    grupo = str(grupo or "").strip()
+
+    if not categoria or categoria == "NaoClassificado":
+        return []
+
+    rows = db.execute(
+        text("""
+            SELECT
+                categoria,
+                grupo_conta,
+                natureza_codigo,
+                natureza_descricao,
+                fundamento,
+                prioridade,
+                confianca
+            FROM ecd_categoria_natureza_esperada
+            WHERE ativo = 1
+              AND categoria = :categoria
+              AND (
+                    :grupo = ''
+                    OR grupo_conta IS NULL
+                    OR grupo_conta = ''
+                    OR grupo_conta = :grupo
+              )
+            ORDER BY prioridade ASC, natureza_codigo ASC
+        """),
+        {
+            "categoria": categoria,
+            "grupo": grupo,
+        },
+    ).mappings().all()
+
+    return [dict(r) for r in rows]
 
 def carregar_linhas_ecd_com_natureza_real(
     db: Session,
@@ -244,13 +284,7 @@ def carregar_linhas_ecd_com_natureza_real(
     periodo: str,
 ) -> list[dict]:
 
-    GRUPOS_ECD_EXCLUIR_GAP = {
-        "NAO_CLASSIFICADO",
-        "RECEITA",
-        "CMV",
-        "REDUTORA_RECEITA",
-        "ESTOQUE_REVENDA",
-    }
+
 
     periodo_norm = normalizar_periodo(periodo)
     if not periodo_norm:
@@ -271,32 +305,55 @@ def carregar_linhas_ecd_com_natureza_real(
         )
         .all()
     )
+    print("[DBG CONTAS]", len(contas), flush=True)
 
     linhas: list[dict] = []
 
     for conta in contas:
 
+        categoria = conta.categoria_confirmada or conta.categoria_sugerida
         grupo = conta.grupo_conta_confirmado or conta.grupo_conta_sugerido
 
-        if grupo in GRUPOS_ECD_EXCLUIR_GAP:
+
+        naturezas_catalogo = buscar_naturezas_categoria_esperada(
+            db,
+            categoria=categoria,
+            grupo=grupo,
+        )
+        print(
+            "[DBG CAT BUSCA]",
+            "cod_cta=", conta.cod_cta,
+            "categoria=", repr(categoria),
+            "grupo=", repr(grupo),
+            "qtd_catalogo=", len(naturezas_catalogo),
+            "catalogo=", naturezas_catalogo,
+            flush=True,
+        )
+
+        naturezas_esperadas = []
+        for item in naturezas_catalogo:
+            nat = str(item.get("natureza_codigo") or "").strip().zfill(2)
+            if nat and nat != "00" and nat not in naturezas_esperadas:
+                naturezas_esperadas.append(nat)
+
+        if not naturezas_esperadas:
             continue
 
-        natureza = (
-            db.query(EcdContaNaturezaEsperada)
-            .filter(EcdContaNaturezaEsperada.empresa_id == empresa_id)
-            .filter(EcdContaNaturezaEsperada.ecd_conta_empresa_id == conta.id)
-            .filter(EcdContaNaturezaEsperada.ativo == True)
-            .first()
+        nat_bc_cred = naturezas_esperadas[0] if naturezas_esperadas else "00"
+        tem_natureza = bool(naturezas_esperadas)
+
+        natureza_descricao = (
+            naturezas_catalogo[0].get("natureza_descricao")
+            if naturezas_catalogo
+            else None
         )
 
-        nat_bc_cred = (
-            str(natureza.natureza_codigo).strip().zfill(2)
-            if natureza and natureza.natureza_codigo
-            else "00"
+        fundamento = (
+            naturezas_catalogo[0].get("fundamento")
+            if naturezas_catalogo
+            else None
         )
-        tem_natureza = bool(
-            natureza and natureza.natureza_codigo
-        )
+
         cod_cta = conta.cod_cta
 
         valor = Decimal("0.00")
@@ -332,7 +389,30 @@ def carregar_linhas_ecd_com_natureza_real(
                 cred = Decimal(str(i155.vl_cred or 0))
                 valor = max(deb, cred)
                 origem_valor = "I155"
-
+        print(
+            "[DBG VALOR]",
+            "cod_cta=", cod_cta,
+            "valor=", valor,
+            "origem=", origem_valor,
+            "naturezas=", naturezas_esperadas,
+            flush=True,
+        )
+        print(
+            "[DBG I355/I155]",
+            "cod_cta=", cod_cta,
+            "dt_res=", dt_res,
+            "valor=", valor,
+            "origem=", origem_valor,
+            flush=True,
+        )
+        print(
+            "[DBG PERIODO]",
+            periodo_norm,
+            ano,
+            mes,
+            dt_res,
+            flush=True,
+        )
         if valor <= 0:
             continue
         elegivel_credito = bool(
@@ -348,13 +428,15 @@ def carregar_linhas_ecd_com_natureza_real(
                 "nome_cta": conta.nome_cta,
                 "nat_bc_cred": nat_bc_cred,
                 "tem_natureza": tem_natureza,
-                "natureza_descricao": getattr(natureza, "natureza_descricao", None),
+                "natureza_descricao": natureza_descricao,
+                "naturezas_esperadas": naturezas_esperadas,
+                "fundamento": fundamento,
                 "valor": valor,
                 "potencial_credito": tem_natureza,
                 "elegivel_credito": elegivel_credito,
                 "origem": origem_valor,
-                "categoria": conta.categoria_confirmada or conta.categoria_sugerida,
-                "grupo": conta.grupo_conta_confirmado or conta.grupo_conta_sugerido,
+                "categoria": categoria,
+                "grupo": grupo,
             }
         )
 
@@ -397,6 +479,11 @@ def montar_contexto_gap_ecd_efd(
             "valor_efd": dados.get("base_efd_declarada"),
             "contas_ecd": (dados.get("ecd") or {}).get("codigos_cta", []),
             "origens": (dados.get("ecd") or {}).get("origens", []),
+
+            "categorias": dados.get("categorias") or [],
+            "grupos": dados.get("grupos") or [],
+            "fundamentos": dados.get("fundamentos") or [],
+            "naturezas_esperadas": dados.get("naturezas_esperadas") or [],
         }
 
     return {

@@ -28,6 +28,7 @@ def materializar_contas_ecd_i050(
 
         nome_cta = str(_get_attr(conta, "nome_cta", "") or _get_attr(conta, "cta", "") or "").strip()
         classificacao = classificar_conta_ecd(
+            db=db,
             nome_cta=nome_cta,
             cod_nat=str(_get_attr(conta, "cod_nat", "") or "").strip(),
             ind_cta=str(_get_attr(conta, "ind_cta", "") or "").strip(),

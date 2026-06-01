@@ -19,7 +19,7 @@ from app.api.legacy_routes.revision_endpoints import router as revision_router
 import app.db.models.models_all #  ✅ garante que todos os models foram carregados
 #from app.api.legacy_routes.c170_endpoints import router as c170_router
 from app.api.routes.icms_ipi_endpoints import router as icms_ipi_router
-from app.api.legacy_routes.foto_recuperacao_endpoints import router as foto_recuperacao_router
+from app.api.routes.foto_recuperacao_endpoints import router as foto_recuperacao_router
 from app.api.routes.dossie import router as dossie_router
 from app.api.legacy_routes import manual_endpoints
 from app.domain.ecd.routes.ecd_endpoints import router as ecd_router
@@ -27,9 +27,6 @@ import logging
 import sys
 from pathlib import Path
 import os
-from logging.handlers import RotatingFileHandler
-
-
 
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
