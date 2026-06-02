@@ -348,6 +348,12 @@ def carregar_linhas_ecd_com_natureza_real(
             else None
         )
 
+        confianca = (
+            naturezas_catalogo[0].get("confianca")
+            if naturezas_catalogo
+            else None
+        )
+
         fundamento = (
             naturezas_catalogo[0].get("fundamento")
             if naturezas_catalogo
@@ -436,6 +442,7 @@ def carregar_linhas_ecd_com_natureza_real(
                 "elegivel_credito": elegivel_credito,
                 "origem": origem_valor,
                 "categoria": categoria,
+                "confianca": confianca,
                 "grupo": grupo,
             }
         )
@@ -471,12 +478,22 @@ def montar_contexto_gap_ecd_efd(
         gap = dados.get("gap_base") or Decimal("0")
 
         por_natureza[nat] = {
+            "periodo": periodo_norm,
             "nat_bc_cred": nat,
             "tem_gap": gap > 0,
             "valor_gap": gap,
+            "gap": gap,
+
             "status": dados.get("status"),
+
             "valor_ecd": dados.get("valor_ecd_elegivel"),
+            "ecd_elegivel": dados.get("valor_ecd_elegivel"),
+
             "valor_efd": dados.get("base_efd_declarada"),
+            "efd_declarada": dados.get("base_efd_declarada"),
+
+            "cobertura_pct": dados.get("cobertura_pct"),
+
             "contas_ecd": (dados.get("ecd") or {}).get("codigos_cta", []),
             "origens": (dados.get("ecd") or {}).get("origens", []),
 
@@ -484,10 +501,18 @@ def montar_contexto_gap_ecd_efd(
             "grupos": dados.get("grupos") or [],
             "fundamentos": dados.get("fundamentos") or [],
             "naturezas_esperadas": dados.get("naturezas_esperadas") or [],
+
+            "categoria": ", ".join(dados.get("categorias") or []),
+            "grupo": ", ".join(dados.get("grupos") or []),
+            "fundamento": ", ".join(dados.get("fundamentos") or []),
         }
 
     return {
         "periodo": periodo_norm,
         "resumo": diagnostico["resumo"],
         "por_natureza": por_natureza,
+        "linhas_ecd": linhas_ecd,
+        "comparativo": diagnostico["comparativo"],
+        "ecd_por_mes_nat": diagnostico["ecd_por_mes_nat"],
+        "efd_por_mes_nat": diagnostico["efd_por_mes_nat"],
     }

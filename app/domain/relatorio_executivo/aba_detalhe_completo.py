@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+from decimal import Decimal
+
+from openpyxl import Workbook
+
+from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
+from app.utils.ecd_gap_status_utils import diagnostico_texto
+from app.utils.excel import criar_aba_generica
+from app.utils.numbers import to_decimal
+
+
+def _fator_base_por_fundamento(fundamento: str | None) -> Decimal:
+    fundamento = (fundamento or "").strip()
+
+    if fundamento == "CreditoPresumido75":
+        return Decimal("0.75")
+
+    return Decimal("1.00")
+
+
+def _observacao_detalhe(item: dict, status: str | None) -> str:
+    categoria = item.get("categoria") or ""
+    fundamento = item.get("fundamento") or ""
+
+    if fundamento == "CreditoPresumido75":
+        return "Crédito presumido com base reduzida a 75%."
+
+    if categoria == "CombustiveisLubrificantes":
+        return "Insumo operacional sujeito à segregação entre uso operacional e administrativo."
+
+    return diagnostico_texto(status)
+
+
+def criar_aba_detalhe_completo(
+    wb: Workbook,
+    ctx: dict,
+) -> None:
+    rows = []
+
+    aliq_pis = Decimal(str(ALIQUOTA_PIS))
+    aliq_cofins = Decimal(str(ALIQUOTA_COFINS))
+
+    por_natureza = ctx.get("por_natureza") or {}
+
+    for item in ctx.get("linhas_ecd", []):
+        nat = str(item.get("nat_bc_cred") or "").zfill(2)
+        dados_nat = por_natureza.get(nat) or {}
+
+        status = dados_nat.get("status")
+        valor_conta = to_decimal(item.get("valor"))
+
+        fator_base = _fator_base_por_fundamento(item.get("fundamento"))
+
+        base_atribuida = (valor_conta * fator_base).quantize(Decimal("0.01"))
+
+        if status in {"SEM_EFD", "PARCIAL"}:
+            gap = base_atribuida
+        else:
+            gap = Decimal("0.00")
+
+        credito_pis = (gap * aliq_pis).quantize(Decimal("0.01"))
+        credito_cofins = (gap * aliq_cofins).quantize(Decimal("0.01"))
+
+        rows.append(
+            {
+                "Ano-Mês": item.get("periodo"),
+                "Código Conta": item.get("cod_cta"),
+                "Descrição": item.get("nome_cta"),
+                "NAT_BC_CRED": nat,
+                "Categoria": item.get("categoria"),
+                "Grupo": item.get("grupo"),
+                "Fundamento": item.get("fundamento"),
+                "Naturezas Esperadas": item.get("naturezas_esperadas"),
+                "Despesa Contábil": valor_conta,
+                "Base Atribuída": base_atribuida,
+                "Gap Atribuído": gap,
+                "Crédito PIS": credito_pis,
+                "Crédito COFINS": credito_cofins,
+                "Fonte": item.get("origem"),
+                "Confiança": item.get("confianca"),
+                "Status": status,
+                "Observação": _observacao_detalhe(item, status),
+            }
+        )
+
+    criar_aba_generica(
+        wb,
+        nome_aba="DetalheCompleto",
+        headers=[
+            "Ano-Mês",
+            "Código Conta",
+            "Descrição",
+            "NAT_BC_CRED",
+            "Categoria",
+            "Grupo",
+            "Fundamento",
+            "Naturezas Esperadas",
+            "Despesa Contábil",
+            "Base Atribuída",
+            "Gap Atribuído",
+            "Crédito PIS",
+            "Crédito COFINS",
+            "Fonte",
+            "Confiança",
+            "Status",
+            "Observação",
+        ],
+        rows=rows,
+        money_cols=[
+            "Despesa Contábil",
+            "Base Atribuída",
+            "Gap Atribuído",
+            "Crédito PIS",
+            "Crédito COFINS",
+        ],
+    )
