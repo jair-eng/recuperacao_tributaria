@@ -16,7 +16,7 @@ def criar_aba_bases_efd_por_natureza(
     ctx: dict,
     titulo: str = "Bases declaradas na EFD-Contribuições por mês e natureza",
 ) -> None:
-    ws = wb.create_sheet("BasesEfdPorNatureza")
+    ws = wb.create_sheet("Bases Por Natureza")
     mapa_nat = ctx.get("mapa_nat_bc_cred") or {}
 
     # BLOCO 1

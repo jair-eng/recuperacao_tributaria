@@ -48,7 +48,7 @@ def criar_aba_cobertura_por_mes(
 
     ws = criar_aba_generica(
         wb,
-        nome_aba = "CoberturaPorMes",
+        nome_aba = "Cobertura Por Mes",
         headers = [
             "Período",
             "ECD Elegível",

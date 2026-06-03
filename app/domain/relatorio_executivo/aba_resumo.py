@@ -46,61 +46,77 @@ def criar_aba_resumo(
     por_categoria = defaultdict(lambda: Decimal("0.00"))
 
     for item in iter_items(ctx.get("linhas_ecd")):
-        categoria = item.get("categoria") or "Investigar"
+        categoria = item.get("categoria") or "NaoClassificado"
         valor = to_decimal(item.get("valor"))
         if valor > 0:
             por_categoria[categoria] += valor
 
     total_efd = to_decimal((ctx.get("resumo") or {}).get("total_efd_declarada"))
-    total_despesa_categoria = sum(por_categoria.values(), Decimal("0.00"))
+
+    total_despesa_geral = sum(por_categoria.values(), Decimal("0.00"))
+
+    total_despesa_elegivel = sum(
+        despesa
+        for categoria, despesa in por_categoria.items()
+        if categoria != "NaoClassificado"
+    )
 
     total_ecd = Decimal("0.00")
+    total_base = Decimal("0.00")
     total_gap = Decimal("0.00")
     total_pis = Decimal("0.00")
     total_cofins = Decimal("0.00")
     total_recuperavel = Decimal("0.00")
 
-    for categoria, despesa in sorted(por_categoria.items(), key=lambda x: x[1], reverse=True,):
-        # primeira versão: gap por categoria = despesa contábil elegível
-        # depois podemos ratear a EFD declarada por natureza/categoria
+    for categoria, despesa in sorted(
+            por_categoria.items(),
+            key=lambda x: (x[0] == "NaoClassificado", -x[1]),
+
+    ):
+        gera_credito = categoria != "NaoClassificado"
+
         base_atribuida = Decimal("0.00")
-        if total_despesa_categoria > 0 and total_efd > 0:
-            base_atribuida = ((despesa / total_despesa_categoria) * total_efd).quantize(Decimal("0.01"))
+        gap = Decimal("0.00")
+        pis = Decimal("0.00")
+        cofins = Decimal("0.00")
+        recuperavel = Decimal("0.00")
 
-        gap = despesa - base_atribuida
-        if gap < 0:
-            gap = Decimal("0.00")
+        if gera_credito:
+            if total_despesa_elegivel > 0 and total_efd > 0:
+                base_atribuida = ((despesa / total_despesa_elegivel) * total_efd).quantize(Decimal("0.01"))
 
-        pis = (gap * ALIQUOTA_PIS).quantize(Decimal("0.01"))
-        cofins = (gap * ALIQUOTA_COFINS).quantize(Decimal("0.01"))
-        recuperavel = pis + cofins
+            gap = despesa - base_atribuida
+            if gap < 0:
+                gap = Decimal("0.00")
+
+            pis = (gap * ALIQUOTA_PIS).quantize(Decimal("0.01"))
+            cofins = (gap * ALIQUOTA_COFINS).quantize(Decimal("0.01"))
+            recuperavel = pis + cofins
+
+            total_base += base_atribuida
+            total_gap += gap
+            total_pis += pis
+            total_cofins += cofins
+            total_recuperavel += recuperavel
+
+        total_ecd += despesa
 
         ws.append([
             categoria,
             despesa,
-            base_atribuida,
-            gap,
-            pis,
-            cofins,
-            recuperavel,
+            base_atribuida if gera_credito else "",
+            gap if gera_credito else "",
+            pis if gera_credito else "",
+            cofins if gera_credito else "",
+            recuperavel if gera_credito else "",
         ])
 
-        total_ecd += despesa
-        total_gap += gap
-        total_pis += pis
-        total_cofins += cofins
-        total_recuperavel += recuperavel
-
     total_row = ws.max_row + 1
-
-    total_gap = total_ecd - total_efd
-    if total_gap < 0:
-        total_gap = Decimal("0.00")
 
     ws.append([
         "TOTAL GERAL",
         total_ecd,
-        total_efd,
+        total_base,
         total_gap,
         total_pis,
         total_cofins,
@@ -126,19 +142,32 @@ def criar_aba_resumo(
     ws.append(["5. Itens sem lastro suficiente devem ser revisados na aba Investigar."])
     ws.append(["6. A Base Atribuída EFD é rateada proporcionalmente entre as categorias elegíveis para fins de estimativa executiva."])
 
-    cobertura_pct = Decimal("0.00")
-    if total_ecd > 0:
-        cobertura_pct = ((total_efd / total_ecd) * Decimal("100")).quantize(Decimal("0.01"))
+    alertas_omissao = ctx.get("alertas_efd_omissao") or []
 
-    ws.append([])
-    alerta_row = ws.max_row + 1
-    ws.append([
-        f"ALERTA - Apenas {cobertura_pct}% da despesa elegível identificada na ECD possui lastro declarado na EFD-Contribuições."
-    ])
+    if alertas_omissao:
+        meses = sorted({str(a.get("Período")) for a in alertas_omissao if a.get("Período")})
+        credito_perdido = sum(to_decimal(a.get("GAP")) for a in alertas_omissao)
 
-    ws.merge_cells(start_row=alerta_row, start_column=1, end_row=alerta_row, end_column=7)
-    ws[f"A{alerta_row}"].font = Font(bold=True, color="FFFFFF")
-    ws[f"A{alerta_row}"].fill = PatternFill("solid", fgColor="C00000")
+        texto_alerta = (
+            f"⚠ ALERTA - {len(meses)} mês(es) com EFD entregue zerada e despesa elegível na ECD: "
+            f"{', '.join(map(str, meses))}. "
+            f"Crédito perdido estimado: R$ {credito_perdido:,.2f}. "
+            f"Ver aba 'Alertas EFD Omissão'."
+        )
+
+        alerta_row = ws.max_row + 2
+        ws.cell(row=alerta_row, column=1, value=texto_alerta)
+
+        ws.merge_cells(
+            start_row=alerta_row,
+            start_column=1,
+            end_row=alerta_row,
+            end_column=7,
+        )
+
+        cell = ws.cell(row=alerta_row, column=1)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="C00000")
 
     for col in ["B", "C", "D", "E", "F", "G"]:
         for row in range(3, total_row + 1):

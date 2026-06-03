@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from openpyxl import Workbook
-
 from app.utils.ecd_gap_status_utils import classificar_alerta, descricao_alerta, iter_items
 from app.utils.excel import criar_aba_generica
 
@@ -35,9 +34,11 @@ def criar_aba_alertas_efd_omissao(
             }
         )
 
+    ctx["alertas_efd_omissao"] = rows
+
     criar_aba_generica(
         wb,
-        nome_aba="AlertasEfdOmissao",
+        nome_aba="Alertas Efd Omissao",
         headers=[
             "Período",
             "Tipo Alerta",

@@ -257,7 +257,8 @@ def buscar_naturezas_categoria_esperada(
                 natureza_descricao,
                 fundamento,
                 prioridade,
-                confianca
+                confianca,
+                observacao_padrao
             FROM ecd_categoria_natureza_esperada
             WHERE ativo = 1
               AND categoria = :categoria
@@ -336,8 +337,6 @@ def carregar_linhas_ecd_com_natureza_real(
             if nat and nat != "00" and nat not in naturezas_esperadas:
                 naturezas_esperadas.append(nat)
 
-        if not naturezas_esperadas:
-            continue
 
         nat_bc_cred = naturezas_esperadas[0] if naturezas_esperadas else "00"
         tem_natureza = bool(naturezas_esperadas)
@@ -359,6 +358,26 @@ def carregar_linhas_ecd_com_natureza_real(
             if naturezas_catalogo
             else None
         )
+        observacao = (
+            naturezas_catalogo[0].get("observacao_padrao")
+            if naturezas_catalogo
+            else None
+        )
+
+        tem_catalogo = bool(naturezas_catalogo)
+
+        origem_classificacao = (
+            "CSV"
+            if conta.categoria_confirmada or conta.grupo_conta_confirmado
+            else "Heurística"
+        )
+
+        if not tem_catalogo:
+            fundamento = "Investigar"
+            confianca = 50
+            observacao = "Classificação sem correspondência no catálogo fiscal."
+            nat_bc_cred = "00"
+            naturezas_esperadas = []
 
         cod_cta = conta.cod_cta
 
@@ -395,30 +414,7 @@ def carregar_linhas_ecd_com_natureza_real(
                 cred = Decimal(str(i155.vl_cred or 0))
                 valor = max(deb, cred)
                 origem_valor = "I155"
-        print(
-            "[DBG VALOR]",
-            "cod_cta=", cod_cta,
-            "valor=", valor,
-            "origem=", origem_valor,
-            "naturezas=", naturezas_esperadas,
-            flush=True,
-        )
-        print(
-            "[DBG I355/I155]",
-            "cod_cta=", cod_cta,
-            "dt_res=", dt_res,
-            "valor=", valor,
-            "origem=", origem_valor,
-            flush=True,
-        )
-        print(
-            "[DBG PERIODO]",
-            periodo_norm,
-            ano,
-            mes,
-            dt_res,
-            flush=True,
-        )
+
         if valor <= 0:
             continue
         elegivel_credito = bool(
@@ -441,9 +437,11 @@ def carregar_linhas_ecd_com_natureza_real(
                 "potencial_credito": tem_natureza,
                 "elegivel_credito": elegivel_credito,
                 "origem": origem_valor,
+                "origem_classificacao": origem_classificacao,
                 "categoria": categoria,
                 "confianca": confianca,
                 "grupo": grupo,
+                "observacao": observacao,
             }
         )
 
@@ -505,6 +503,8 @@ def montar_contexto_gap_ecd_efd(
             "categoria": ", ".join(dados.get("categorias") or []),
             "grupo": ", ".join(dados.get("grupos") or []),
             "fundamento": ", ".join(dados.get("fundamentos") or []),
+            "observacao": ", ".join(dados.get("observacao_padrao") or []),
+
         }
 
     return {

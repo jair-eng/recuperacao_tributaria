@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from decimal import Decimal
-
 from openpyxl import Workbook
-
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
-from app.utils.ecd_gap_status_utils import diagnostico_texto
+from app.utils.ecd_observacao_utils import montar_observacao_detalhe
 from app.utils.excel import criar_aba_generica
 from app.utils.numbers import to_decimal
 
@@ -15,21 +13,7 @@ def _fator_base_por_fundamento(fundamento: str | None) -> Decimal:
 
     if fundamento == "CreditoPresumido75":
         return Decimal("0.75")
-
     return Decimal("1.00")
-
-
-def _observacao_detalhe(item: dict, status: str | None) -> str:
-    categoria = item.get("categoria") or ""
-    fundamento = item.get("fundamento") or ""
-
-    if fundamento == "CreditoPresumido75":
-        return "Crédito presumido com base reduzida a 75%."
-
-    if categoria == "CombustiveisLubrificantes":
-        return "Insumo operacional sujeito à segregação entre uso operacional e administrativo."
-
-    return diagnostico_texto(status)
 
 
 def criar_aba_detalhe_completo(
@@ -77,16 +61,17 @@ def criar_aba_detalhe_completo(
                 "Gap Atribuído": gap,
                 "Crédito PIS": credito_pis,
                 "Crédito COFINS": credito_cofins,
-                "Fonte": item.get("origem"),
+                "Fonte": item.get("origem_classificacao"),
+                "Origem Valor": item.get("origem_valor"),
                 "Confiança": item.get("confianca"),
                 "Status": status,
-                "Observação": _observacao_detalhe(item, status),
+                "Observação": montar_observacao_detalhe(item=item, status=status),
             }
         )
 
     criar_aba_generica(
         wb,
-        nome_aba="DetalheCompleto",
+        nome_aba="Detalhe Completo",
         headers=[
             "Ano-Mês",
             "Código Conta",
