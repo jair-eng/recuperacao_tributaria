@@ -1,5 +1,7 @@
 
 import re
+import unicodedata
+
 
 def only_digits(valor):
     return "".join(ch for ch in str(valor or "") if ch.isdigit())
@@ -7,6 +9,11 @@ def only_digits(valor):
 
 def norm_str(valor):
     return str(valor or "").strip().upper()
+
+def normalizar_texto(valor: str) -> str:
+    valor = unicodedata.normalize("NFKD", valor)
+    valor = valor.encode("ascii", "ignore").decode("ascii")
+    return valor.upper().strip()
 
 def normalizar_espacos(valor: str) -> str:
     return re.sub(r"\s+", " ", str(valor or "")).strip()

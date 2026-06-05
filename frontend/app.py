@@ -687,24 +687,24 @@ elif page == "0 — Importar SPED":
             st.table([ignorados])
 
     # ==========================================================
-    # FOTO RECUPERAÇÃO
+    # RELATÓRIO EXECUTIVO
     # ==========================================================
     st.divider()
-    st.subheader("Foto Recuperação")
+    st.subheader("Relatório Executivo")
     st.caption(
-        "Executa o cruzamento ICMS/IPI x EFD Contribuições a partir das pastas configuradas "
-        "no backend e gera a planilha consolidada da Foto Recuperação."
+        "Executa o cruzamento ECD x EFD Contribuições a partir das pastas configuradas "
+        "no backend e gera a planilha consolidada do Relatório Executivo."
     )
 
     st.info(
-        "Este processo lê os arquivos das pastas ICMS/IPI e EFD Contribuições no backend, "
-        "cruza os dados e devolve o XLSX final para download."
+        "Este processo lê os arquivos das pastas ECD e EFD Contribuições no backend, "
+        "classifica as contas contábeis pelo catálogo fiscal e devolve o XLSX final para download."
     )
 
-    if st.button("📸 Gerar Foto Recuperação"):
+    if st.button("📸 Gerar Relatório Executivo"):
         try:
-            with st.spinner("Gerando Foto Recuperação..."):
-                url = api_url("/foto-recuperacao/executar")
+            with st.spinner("Gerando Relatório Executivo..."):
+                url = api_url("/relatorio-executivo/ecd-efd/local")
                 resp = requests.post(url, timeout=TIMEOUT)
 
                 if resp.status_code >= 400:
@@ -713,23 +713,23 @@ elif page == "0 — Importar SPED":
                         detail = err.get("detail") or f"HTTP {resp.status_code}"
                     except Exception:
                         detail = f"HTTP {resp.status_code}"
-                    st.error(f"Erro ao gerar Foto Recuperação: {detail}")
+                    st.error(f"Erro ao gerar Relatório Executivo: {detail}")
                 else:
-                    st.session_state.foto_xlsx_bytes = resp.content
-                    st.success("Foto Recuperação gerada com sucesso.")
+                    st.session_state.relatorio_executivo_xlsx_bytes = resp.content
+                    st.success("Relatório Executivo gerado com sucesso.")
 
         except Exception as e:
-            st.error(f"Erro ao gerar Foto Recuperação: {e}")
+            st.error(f"Erro ao gerar Relatório Executivo: {e}")
 
-    foto_xlsx_bytes = st.session_state.get("foto_xlsx_bytes")
+    relatorio_executivo_xlsx_bytes = st.session_state.get("relatorio_executivo_xlsx_bytes")
 
-    if foto_xlsx_bytes:
+    if relatorio_executivo_xlsx_bytes:
         st.download_button(
-            label="⬇️ Baixar Excel Foto Recuperação",
-            data=foto_xlsx_bytes,
-            file_name="foto_recuperacao_cruzada.xlsx",
+            label="⬇️ Baixar Excel Relatório Executivo",
+            data=relatorio_executivo_xlsx_bytes,
+            file_name="relatorio_executivo_local.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_foto_recuperacao_xlsx",
+            key="download_relatorio_executivo_xlsx"
         )
 
 

@@ -1,5 +1,5 @@
 from typing import Any
-
+from pathlib import Path
 
 def split_linha_sped(linha: str) -> list[str]:
     return str(linha or "").strip().strip("|").split("|")
@@ -30,3 +30,50 @@ def extrair_dados_sped(reg: Any) -> list[Any]:
     conteudo_json = getattr(reg, "conteudo_json", None) or {}
 
     return list(conteudo_json.get("dados") or [])
+
+def ler_linhas_sped(caminho: Path) -> list[list[str]]:
+    linhas = []
+
+    with open(caminho, "r", encoding="latin-1", errors="ignore") as f:
+        for linha in f:
+
+            if not linha.startswith("|"):
+                continue
+
+            dados = split_linha_sped(linha)
+
+            if not dados:
+                continue
+
+            linhas.append(dados)
+
+    return linhas
+
+def listar_txt(pasta: Path) -> list[Path]:
+    if not pasta.exists() or not pasta.is_dir():
+        raise FileNotFoundError(f"Pasta não encontrada: {pasta}")
+
+    return sorted(
+        [p for p in pasta.glob("*.txt") if p.is_file()],
+        key=lambda p: p.name.lower(),
+    )
+
+def periodo_por_i355(mov: dict, periodo: str | None = None) -> str | None:
+    if periodo:
+        return periodo
+
+    for campo in ("periodo", "dt_ini", "dt_fin", "data"):
+        valor = str(mov.get(campo) or "").strip()
+        if len(valor) >= 6 and valor[:6].isdigit():
+            return valor[:6]
+
+    return None
+
+def periodo_de_data_sped(data: str | None) -> str | None:
+    data = str(data or "").strip()
+
+    if len(data) != 8 or not data.isdigit():
+        return None
+
+    # DDMMAAAA -> AAAAMM
+    return data[4:8] + data[2:4]

@@ -16,10 +16,10 @@ from app.db.models.base import Base
 from app.db.session import engine
 from app.api.empresa_endpoints import router as empresa_router
 from app.api.legacy_routes.revision_endpoints import router as revision_router
+from app.api.routes.relatorio_executivo_endpoints import router as relatorio_executivo_router
 import app.db.models.models_all #  ✅ garante que todos os models foram carregados
 #from app.api.legacy_routes.c170_endpoints import router as c170_router
 from app.api.routes.icms_ipi_endpoints import router as icms_ipi_router
-from app.api.routes.foto_recuperacao_endpoints import router as foto_recuperacao_router
 from app.api.routes.dossie import router as dossie_router
 from app.api.legacy_routes import manual_endpoints
 from app.domain.ecd.routes.ecd_endpoints import router as ecd_router
@@ -70,7 +70,7 @@ app.include_router(revision_router)
 #app.include_router(c170_router)
 app.include_router(dossie_router)
 app.include_router(icms_ipi_router)
-app.include_router(foto_recuperacao_router)
+app.include_router(relatorio_executivo_router)
 app.include_router(manual_endpoints.router)
 app.include_router(ecd_router)
 

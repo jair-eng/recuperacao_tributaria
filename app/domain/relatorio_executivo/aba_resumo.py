@@ -5,7 +5,7 @@ from decimal import Decimal
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
-from app.utils.ecd_gap_status_utils import iter_items
+from app.utils.ecd_gap_status_utils import iter_items, ordem_categoria
 from app.utils.excel import autosize_columns
 from app.utils.numbers import to_decimal
 
@@ -43,22 +43,42 @@ def criar_aba_resumo(
         cell.font = Font(bold=True)
         cell.fill = header_fill
 
-    por_categoria = defaultdict(lambda: Decimal("0.00"))
+    por_categoria = defaultdict(lambda: {
+        "despesa": Decimal("0.00"),
+        "elegivel": Decimal("0.00"),
+        "naturezas": set(),
+    })
 
     for item in iter_items(ctx.get("linhas_ecd")):
         categoria = item.get("categoria") or "NaoClassificado"
         valor = to_decimal(item.get("valor"))
-        if valor > 0:
-            por_categoria[categoria] += valor
+
+        if valor <= 0:
+            continue
+
+        nat = str(item.get("nat_bc_cred") or "00").zfill(2)
+
+        por_categoria[categoria]["despesa"] += valor
+        por_categoria[categoria]["naturezas"].add(nat)
+
+        for nat_esperada in item.get("naturezas_esperadas") or []:
+            por_categoria[categoria]["naturezas"].add(str(nat_esperada).zfill(2))
+
+        if item.get("entra_base_credito") is True:
+            por_categoria[categoria]["elegivel"] += valor
 
     total_efd = to_decimal((ctx.get("resumo") or {}).get("total_efd_declarada"))
 
-    total_despesa_geral = sum(por_categoria.values(), Decimal("0.00"))
+
 
     total_despesa_elegivel = sum(
-        despesa
-        for categoria, despesa in por_categoria.items()
-        if categoria != "NaoClassificado"
+        dados["elegivel"]
+        for dados in por_categoria.values()
+    )
+    print(
+        "[RESUMO]",
+        "total_efd=", total_efd,
+        "total_despesa_elegivel=", total_despesa_elegivel,
     )
 
     total_ecd = Decimal("0.00")
@@ -68,12 +88,15 @@ def criar_aba_resumo(
     total_cofins = Decimal("0.00")
     total_recuperavel = Decimal("0.00")
 
-    for categoria, despesa in sorted(
-            por_categoria.items(),
-            key=lambda x: (x[0] == "NaoClassificado", -x[1]),
 
+    for categoria, dados in sorted(
+            por_categoria.items(),
+            key=ordem_categoria,
     ):
-        gera_credito = categoria != "NaoClassificado"
+        despesa = dados["despesa"]
+        despesa_elegivel = dados["elegivel"]
+
+        gera_credito = despesa_elegivel > 0
 
         base_atribuida = Decimal("0.00")
         gap = Decimal("0.00")
@@ -81,13 +104,22 @@ def criar_aba_resumo(
         cofins = Decimal("0.00")
         recuperavel = Decimal("0.00")
 
-        if gera_credito:
-            if total_despesa_elegivel > 0 and total_efd > 0:
-                base_atribuida = ((despesa / total_despesa_elegivel) * total_efd).quantize(Decimal("0.01"))
+        naturezas = dados["naturezas"]
 
-            gap = despesa - base_atribuida
-            if gap < 0:
-                gap = Decimal("0.00")
+        efd_categoria = sum(
+            to_decimal(
+                ((ctx.get("por_natureza") or {}).get(nat) or {}).get("efd_declarada")
+            )
+            for nat in naturezas
+        )
+
+        if gera_credito:
+            if gera_credito:
+                base_atribuida = min(despesa_elegivel, efd_categoria)
+
+                gap = despesa_elegivel - base_atribuida
+                if gap < 0:
+                    gap = Decimal("0.00")
 
             pis = (gap * ALIQUOTA_PIS).quantize(Decimal("0.01"))
             cofins = (gap * ALIQUOTA_COFINS).quantize(Decimal("0.01"))
@@ -140,7 +172,7 @@ def criar_aba_resumo(
     ws.append(["3. Crédito potencial calculado com PIS 1,65% e COFINS 7,60% nesta versão inicial."])
     ws.append(["4. Bases por natureza e divergências técnicas constam nas abas específicas."])
     ws.append(["5. Itens sem lastro suficiente devem ser revisados na aba Investigar."])
-    ws.append(["6. A Base Atribuída EFD é rateada proporcionalmente entre as categorias elegíveis para fins de estimativa executiva."])
+    ws.append(["6. A Base Atribuída EFD considera apenas bases declaradas na mesma natureza de crédito da categoria."])
 
     alertas_omissao = ctx.get("alertas_efd_omissao") or []
 

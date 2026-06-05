@@ -17,38 +17,16 @@ from app.domain.relatorio_executivo.aba_categorias import criar_abas_por_categor
 from app.utils.excel import remover_aba_padrao, criar_aba_generica
 
 
-def exportar_relatorio_executivo_ecd_efd(
-    db: Session,
+def exportar_relatorio_executivo_ecd_efd_por_ctx(
     *,
-    empresa_id: int,
-    versao_id: int,
-    periodo: str,
+    ctx: dict,
     caminho_saida: str | Path,
+    titulo: str = "Relatório Executivo ECD x EFD",
     incluir_correcoes_automaticas: bool = True,
     correcoes_automaticas: list[dict[str, Any]] | None = None,
-    titulo: str = "Relatório Executivo ECD x EFD",
 ) -> Path:
     caminho_saida = Path(caminho_saida)
     caminho_saida.parent.mkdir(parents=True, exist_ok=True)
-
-    ctx = montar_contexto_gap_ecd_efd(
-        db,
-        empresa_id=empresa_id,
-        versao_id=versao_id,
-        periodo=periodo,
-    )
-    ctx["mapa_nat_bc_cred"] = carregar_mapa_nat_bc_cred(db)
-
-    print("\n========== CTX ==========")
-    print("keys:", ctx.keys())
-
-    print("\n========== POR_NATUREZA ==========")
-    print(type(ctx.get("por_natureza")))
-    print(ctx.get("por_natureza"))
-
-    print("\n========== LINHAS_ECD ==========")
-    print(type(ctx.get("linhas_ecd")))
-    print("qtd:", len(ctx.get("linhas_ecd", [])))
 
     correcoes_automaticas = correcoes_automaticas or []
 
@@ -85,3 +63,31 @@ def exportar_relatorio_executivo_ecd_efd(
 
     wb.save(caminho_saida)
     return caminho_saida
+
+def exportar_relatorio_executivo_ecd_efd(
+    db: Session,
+    *,
+    empresa_id: int,
+    versao_id: int,
+    periodo: str,
+    caminho_saida: str | Path,
+    incluir_correcoes_automaticas: bool = True,
+    correcoes_automaticas: list[dict[str, Any]] | None = None,
+    titulo: str = "Relatório Executivo ECD x EFD",
+) -> Path:
+    ctx = montar_contexto_gap_ecd_efd(
+        db,
+        empresa_id=empresa_id,
+        versao_id=versao_id,
+        periodo=periodo,
+    )
+
+    ctx["mapa_nat_bc_cred"] = carregar_mapa_nat_bc_cred(db)
+
+    return exportar_relatorio_executivo_ecd_efd_por_ctx(
+        ctx=ctx,
+        caminho_saida=caminho_saida,
+        incluir_correcoes_automaticas=incluir_correcoes_automaticas,
+        correcoes_automaticas=correcoes_automaticas,
+        titulo=titulo,
+    )

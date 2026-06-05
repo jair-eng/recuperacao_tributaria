@@ -3,54 +3,60 @@ from __future__ import annotations
 from decimal import Decimal
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
-
 from app.utils.excel import criar_aba_generica
 from app.utils.numbers import to_decimal
-
 
 def criar_aba_cobertura_por_mes(
     wb: Workbook,
     ctx: dict,
 ) -> None:
-    resumo = ctx.get("resumo") or {}
+    rows = []
+    mapa_nat = ctx.get("mapa_nat_bc_cred") or {}
 
-    periodo = ctx.get("periodo") or resumo.get("periodo")
+    for nat, dados in sorted((ctx.get("por_natureza") or {}).items()):
+        periodo = dados.get("periodo")
+        ecd = to_decimal(dados.get("ecd_elegivel"))
+        efd = to_decimal(dados.get("efd_declarada"))
+        gap = to_decimal(dados.get("gap"))
+        status = dados.get("status")
 
-    ecd = to_decimal(resumo.get("total_ecd_elegivel"))
-    efd = to_decimal(resumo.get("total_efd_declarada"))
-    gap = to_decimal(resumo.get("total_gap"))
+        cobertura_pct = Decimal("0.00")
+        if ecd > 0:
+            cobertura_pct = ((efd / ecd) * Decimal("100")).quantize(Decimal("0.01"))
 
-    cobertura_pct = Decimal("0.00")
-    if ecd > 0:
-        cobertura_pct = ((efd / ecd) * Decimal("100")).quantize(Decimal("0.01"))
+        if not status:
+            if ecd > 0 and efd == 0:
+                status = "SEM_EFD"
+            elif ecd == 0 and efd > 0:
+                status = "SEM_ECD"
+            elif ecd > 0 and efd < ecd:
+                status = "BAIXA_COBERTURA"
+            else:
+                status = "OK"
 
-    status = "OK"
-    if ecd > 0 and efd == 0:
-        status = "SEM_EFD"
-    elif ecd == 0 and efd > 0:
-        status = "SEM_ECD"
-    elif cobertura_pct < Decimal("70"):
-        status = "BAIXA_COBERTURA"
-
-    rows = [
-        {
+        rows.append({
             "Período": periodo,
+            "NAT_BC_CRED": nat,
+            "Categoria": dados.get("categoria") or mapa_nat.get(nat, ""),
             "ECD Elegível": ecd,
             "EFD Declarada": efd,
             "GAP": gap,
             "Cobertura %": cobertura_pct,
             "Status": status,
             "Interpretação": (
-                f"A EFD declarou {cobertura_pct}% da despesa elegível identificada na ECD."
+                f"A EFD declarou {cobertura_pct}% da despesa elegível identificada na ECD para a natureza {nat}."
+                if ecd > 0
+                else "Existe base declarada na EFD sem despesa elegível ECD correspondente para esta natureza."
             ),
-        }
-    ]
+        })
 
     ws = criar_aba_generica(
         wb,
-        nome_aba = "Cobertura Por Mes",
-        headers = [
+        nome_aba="Cobertura Por Mes",
+        headers=[
             "Período",
+            "NAT_BC_CRED",
+            "Categoria",
             "ECD Elegível",
             "EFD Declarada",
             "GAP",
@@ -58,24 +64,10 @@ def criar_aba_cobertura_por_mes(
             "Status",
             "Interpretação",
         ],
-        rows = rows,
-        money_cols = [
+        rows=rows,
+        money_cols=[
             "ECD Elegível",
             "EFD Declarada",
             "GAP",
         ],
     )
-
-    fill_alerta = PatternFill("solid", fgColor="FFF2CC")  # amarelo claro
-
-    for row in range(2, ws.max_row + 1):
-        cobertura = ws.cell(row=row, column=5).value
-
-        try:
-            cobertura = float(cobertura or 0)
-        except Exception:
-            cobertura = 0
-
-        if cobertura == 0:
-            for col in range(1, ws.max_column + 1):
-                ws.cell(row=row, column=col).fill = fill_alerta

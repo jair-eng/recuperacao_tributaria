@@ -81,3 +81,14 @@ def categoria_diagnostico(item: dict) -> str:
         return f"EFD NAT {nat} - sem categoria ECD"
 
     return "SEM CATEGORIA"
+
+def ordem_categoria(item):
+    categoria, dados = item
+    elegivel = dados["elegivel"]
+
+    # elegíveis primeiro; investigar/não classificado no final
+    return (
+        elegivel <= 0,
+        categoria == "NaoClassificado",
+        -dados["despesa"],
+    )
