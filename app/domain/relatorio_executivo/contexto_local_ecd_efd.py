@@ -5,7 +5,7 @@ from decimal import Decimal
 from collections import defaultdict
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-
+from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.domain.relatorio_executivo.contrib_loader_local import carregar_contrib_local, montar_efd_por_natureza_local
 from app.domain.relatorio_executivo.ecd_loader_local import carregar_ecd_local
 from app.utils.numbers import to_decimal
@@ -16,7 +16,8 @@ from app.utils.strings import normalizar_texto
 def montar_contexto_gap_ecd_efd_local(
     db: Session,
     *,
-    empresa_id: int,
+    empresa_id: int | None = None,
+    dominio: str = "GERAL",
     pasta_ecd: Path,
     pasta_contrib: Path,
     periodo: str | None = None,
@@ -101,9 +102,13 @@ def montar_contexto_gap_ecd_efd_local(
         to_decimal(i.get("efd_declarada"))
         for i in por_natureza.values()
     )
-
+    print("[DOMINIO]", dominio)
+    catalogo_fiscal = carregar_catalogo_fiscal(db)
     return {
         "periodo": periodo,
+        "catalogo_fiscal": catalogo_fiscal,
+        "dominio": dominio,
+        "origem": "LOCAL",
         "resumo": {
             "periodo": periodo,
             "total_ecd_elegivel": total_ecd,
@@ -195,7 +200,7 @@ def montar_por_natureza_vazio(linhas_ecd: list[dict]) -> dict:
 def montar_linhas_ecd_local(
     db: Session,
     *,
-    empresa_id: int,
+    empresa_id: int | None = None,
     ecd_ctx: dict,
     periodo: str | None = None,
 ) -> list[dict]:
@@ -269,23 +274,6 @@ def montar_linhas_ecd_local(
             "nivel_evidencia": nivel_evidencia,
             "entra_base_credito": entra_base_credito,
         })
-        ######
-        from collections import defaultdict
-
-        totais_conta = defaultdict(Decimal)
-
-        for linha in linhas:
-            totais_conta[linha["cod_cta"]] += to_decimal(linha["valor"])
-
-        print("\n========== TOTAIS POR CONTA ==========")
-
-        for cod_cta, valor in sorted(
-                totais_conta.items(),
-                key=lambda x: x[1],
-                reverse=True,
-        ):
-            print(cod_cta, valor)
-        ###
 
     return linhas
 

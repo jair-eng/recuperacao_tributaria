@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.utils.strings import norm_str
+
 
 def diagnostico_texto(status: str | None) -> str:
     status = (status or "").upper()
@@ -91,4 +93,12 @@ def ordem_categoria(item):
         elegivel <= 0,
         categoria == "NaoClassificado",
         -dados["despesa"],
+    )
+
+def eh_categoria_frete(categoria: str) -> bool:
+    c = norm_str(categoria)
+    return (
+        "FRETE" in c
+        or "SUBCONTRATACAO" in c
+        or "CARRETO" in c
     )

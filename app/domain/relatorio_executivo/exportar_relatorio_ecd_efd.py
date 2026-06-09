@@ -11,6 +11,7 @@ from app.domain.relatorio_executivo.aba_bases_efd_por_natureza import criar_aba_
 from app.domain.relatorio_executivo.aba_cobertura_por_mes import criar_aba_cobertura_por_mes
 from app.domain.relatorio_executivo.aba_detalhe_completo import criar_aba_detalhe_completo
 from app.domain.relatorio_executivo.aba_diagnostico_efd import criar_aba_diagnostico_efd
+from app.domain.relatorio_executivo.aba_giagnostico_transp import criar_aba_diagnostico_transp
 from app.domain.relatorio_executivo.aba_investigar import criar_aba_investigar
 from app.domain.relatorio_executivo.aba_resumo import criar_aba_resumo
 from app.domain.relatorio_executivo.aba_categorias import criar_abas_por_categoria
@@ -35,6 +36,12 @@ def exportar_relatorio_executivo_ecd_efd_por_ctx(
 
     criar_aba_alertas_efd_omissao(wb, ctx)
     criar_aba_resumo(wb, ctx, titulo=titulo)
+
+    dominio = str(ctx.get("dominio") or "GERAL").upper()
+
+    if dominio == "TRANSP":
+        criar_aba_diagnostico_transp(wb, ctx)
+
     criar_aba_bases_efd_por_natureza(wb, ctx)
     criar_aba_cobertura_por_mes(wb, ctx)
     criar_aba_diagnostico_efd(wb, ctx)

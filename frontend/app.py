@@ -701,11 +701,16 @@ elif page == "0 — Importar SPED":
         "classifica as contas contábeis pelo catálogo fiscal e devolve o XLSX final para download."
     )
 
+    dominio = st.selectbox(
+        "Domínio fiscal da empresa",
+        ["GERAL", "CAFE", "TRANSP", "POSTO", "REVENDA_GAS", "AGRO"],
+        index=0,
+    )
     if st.button("📸 Gerar Relatório Executivo"):
         try:
             with st.spinner("Gerando Relatório Executivo..."):
                 url = api_url("/relatorio-executivo/ecd-efd/local")
-                resp = requests.post(url, timeout=TIMEOUT)
+                resp = requests.post(url, params={"dominio": dominio}, timeout=TIMEOUT)
 
                 if resp.status_code >= 400:
                     try:

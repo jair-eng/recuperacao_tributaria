@@ -34,17 +34,28 @@ def criar_aba_detalhe_completo(
         status = dados_nat.get("status")
         valor_conta = to_decimal(item.get("valor"))
 
+        gera_credito = item.get("entra_base_credito") is True
+
+
         fator_base = _fator_base_por_fundamento(item.get("fundamento"))
 
-        base_atribuida = (valor_conta * fator_base).quantize(Decimal("0.01"))
+        if gera_credito:
+            fator_base = _fator_base_por_fundamento(item.get("fundamento"))
 
-        if status in {"SEM_EFD", "PARCIAL"}:
-            gap = base_atribuida
+            base_atribuida = (valor_conta * fator_base).quantize(Decimal("0.01"))
+
+            if status in {"SEM_EFD", "PARCIAL"}:
+                gap = base_atribuida
+            else:
+                gap = Decimal("0.00")
+
+            credito_pis = (gap * aliq_pis).quantize(Decimal("0.01"))
+            credito_cofins = (gap * aliq_cofins).quantize(Decimal("0.01"))
         else:
+            base_atribuida = Decimal("0.00")
             gap = Decimal("0.00")
-
-        credito_pis = (gap * aliq_pis).quantize(Decimal("0.01"))
-        credito_cofins = (gap * aliq_cofins).quantize(Decimal("0.01"))
+            credito_pis = Decimal("0.00")
+            credito_cofins = Decimal("0.00")
 
         rows.append(
             {
@@ -57,10 +68,10 @@ def criar_aba_detalhe_completo(
                 "Fundamento": item.get("fundamento"),
                 "Naturezas Esperadas": item.get("naturezas_esperadas"),
                 "Despesa Contábil": valor_conta,
-                "Base Atribuída": base_atribuida,
-                "Gap Atribuído": gap,
-                "Crédito PIS": credito_pis,
-                "Crédito COFINS": credito_cofins,
+                "Base Atribuída": base_atribuida if gera_credito else "",
+                "Gap Atribuído": gap if gera_credito else "",
+                "Crédito PIS": credito_pis if gera_credito else "",
+                "Crédito COFINS": credito_cofins if gera_credito else "",
                 "Fonte": item.get("origem_classificacao"),
                 "Origem Valor": item.get("origem_valor"),
                 "Confiança": item.get("confianca"),
@@ -87,6 +98,7 @@ def criar_aba_detalhe_completo(
             "Crédito PIS",
             "Crédito COFINS",
             "Fonte",
+            "Origem Valor",
             "Confiança",
             "Status",
             "Observação",

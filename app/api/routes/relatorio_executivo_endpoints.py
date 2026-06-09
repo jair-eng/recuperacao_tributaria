@@ -24,8 +24,9 @@ PASTA_CONTRIB = Path(r"C:\Sped\CONTRIB")
 
 @router.post("/ecd-efd/local")
 def gerar_relatorio_ecd_efd_local(
-    empresa_id: int = 1,
     db: Session = Depends(get_db),
+    empresa_id: int | None = None,
+    dominio: str = "GERAL"
 ):
     try:
 
@@ -38,6 +39,7 @@ def gerar_relatorio_ecd_efd_local(
         caminho = gerar_relatorio_executivo_local(
             db=db,
             empresa_id=empresa_id,
+            dominio=dominio,
             pasta_ecd=PASTA_ECD,
             pasta_contrib=PASTA_CONTRIB,
             caminho_saida=caminho_saida,
