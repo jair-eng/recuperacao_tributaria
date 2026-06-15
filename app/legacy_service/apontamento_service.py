@@ -2,17 +2,9 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 from app.db.models import EfdApontamento, EfdVersao
 from typing import List
-from app.Legacy.fiscal.regras.Autocorrigivel.agro import aplicar_correcao_ind_agro_cst51
-from app.Legacy.fiscal.regras.Autocorrigivel.c170_insert_contribuicao import aplicar_correcao_c170_insert_contribuicao
-from app.Legacy.fiscal.regras.Autocorrigivel.cafe import aplicar_correcao_ind_cafe_cst51
-from app.Legacy.fiscal.regras.Autocorrigivel.lc192_corretiva_c170Existente import aplicar_correcao_lc192_c170_existente
-from app.Legacy.fiscal.regras.Autocorrigivel.posto_corretiva_c170Existente import aplicar_correcao_posto_credito_normal_c170
-from app.Legacy.fiscal.regras.Autocorrigivel.supermercado import aplicar_correcao_sup_embalagens_cst51_hibrido
-from app.Legacy.fiscal.regras.Autocorrigivel.transportadora import aplicar_correcao_transp_insumo_c170
 import logging
-
 from app.domain.workflow.corretiva_v2_service import aplicar_corretiva_apontamento_v2
-from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import inserir_notas_icms_ausentes_na_efd
+
 
 logger = logging.getLogger(__name__)
 

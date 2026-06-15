@@ -14,7 +14,7 @@ def carregar_ecd_local(arquivos_ecd: list[Path]) -> dict:
 
     for arquivo in arquivos_ecd:
         i350_atual = None
-        print(f"[ECD LOCAL] lendo: {arquivo}")
+
 
         for partes in ler_linhas_sped(arquivo):
             reg = partes[0] if partes else ""

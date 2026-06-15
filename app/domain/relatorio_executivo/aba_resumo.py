@@ -5,7 +5,7 @@ from decimal import Decimal
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
-from app.utils.ecd_gap_status_utils import iter_items, ordem_categoria
+from app.utils.ecd_gap_utils import iter_items, ordem_categoria
 from app.utils.excel import autosize_columns
 from app.utils.numbers import to_decimal
 

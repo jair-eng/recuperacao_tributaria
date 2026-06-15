@@ -21,6 +21,7 @@ router = APIRouter(
 
 PASTA_ECD = Path(r"C:\Sped\ECD")
 PASTA_CONTRIB = Path(r"C:\Sped\CONTRIB")
+PASTA_ICMS = Path(r"C:\Sped\ICMS_IPI")
 
 @router.post("/ecd-efd/local")
 def gerar_relatorio_ecd_efd_local(
@@ -29,22 +30,25 @@ def gerar_relatorio_ecd_efd_local(
     dominio: str = "GERAL"
 ):
     try:
+        print("[ROTA] entrou /ecd-efd/local", flush=True)
+        print("[ROTA] dominio:", dominio, flush=True)
 
         PASTA_SAIDA = Path(r"C:\Sped\saida")
 
         nome_arquivo = f"relatorio_executivo_ecd_efd_local_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
         caminho_saida = PASTA_SAIDA / nome_arquivo
 
-
+        print("[ROTA] antes gerar_relatorio_executivo_local", flush=True)
         caminho = gerar_relatorio_executivo_local(
             db=db,
             empresa_id=empresa_id,
             dominio=dominio,
             pasta_ecd=PASTA_ECD,
             pasta_contrib=PASTA_CONTRIB,
+            pasta_icms=PASTA_ICMS,
             caminho_saida=caminho_saida,
         )
-
+        print("[ROTA] depois gerar_relatorio_executivo_local", flush=True)
         return FileResponse(
             path=str(caminho),
             filename=nome_arquivo,

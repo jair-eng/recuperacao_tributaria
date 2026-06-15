@@ -8,6 +8,7 @@ from sqlalchemy import text
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.domain.relatorio_executivo.contrib_loader_local import carregar_contrib_local, montar_efd_por_natureza_local
 from app.domain.relatorio_executivo.ecd_loader_local import carregar_ecd_local
+from app.utils.ecd_gap_utils import ajustar_sinal_anulacao_ecd
 from app.utils.numbers import to_decimal
 from app.utils.sped import listar_txt, periodo_por_i355
 from app.utils.strings import normalizar_texto
@@ -37,6 +38,7 @@ def montar_contexto_gap_ecd_efd_local(
         ecd_ctx=ecd_ctx,
         periodo=periodo,
     )
+    linhas_ecd = ajustar_sinal_anulacao_ecd(linhas_ecd)
 
     # Por enquanto vazio até plugarmos o loader da EFD Contrib
     por_natureza = montar_por_natureza_vazio(linhas_ecd)
@@ -104,6 +106,8 @@ def montar_contexto_gap_ecd_efd_local(
     )
     print("[DOMINIO]", dominio)
     catalogo_fiscal = carregar_catalogo_fiscal(db)
+
+
     return {
         "periodo": periodo,
         "catalogo_fiscal": catalogo_fiscal,

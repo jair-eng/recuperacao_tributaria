@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import EfdRegistro
-from app.Legacy.fiscal.scanner import FiscalScanner
 from app.schemas.c170 import C170PatchPayload, C170BatchPayload
 from app.schemas.workflow import RevisaoGlobalSchema
 from app.legacy_service import c170_service

@@ -45,19 +45,34 @@ def carregar_f100_local(
     arquivos: list[Path],
 ) -> list[dict[str, Any]]:
     registros: list[dict[str, Any]] = []
+    periodo_atual = None
 
     for arquivo in arquivos:
         for partes in ler_linhas_sped(arquivo):
             reg = get_safe(partes, 0)
 
+            if reg == "0000":
+                dt_ini = get_safe(partes, 6)
+                if dt_ini and len(dt_ini) == 8:
+                    periodo_atual = dt_ini[4:8] + dt_ini[2:4]
+
             if reg != REG_F100:
                 continue
 
-            registros.append(
-                extrair_f100_de_partes(
-                    partes,
-                    arquivo=arquivo.name,
-                )
+            item = extrair_f100_de_partes(
+                partes,
+                arquivo=arquivo.name,
             )
+
+            vl_pis = item.get("vl_pis") or 0
+            vl_cofins = item.get("vl_cofins") or 0
+
+            item["periodo"] = periodo_atual
+            item["origem"] = "CONTRIB_F100"
+            item["tem_credito_pis"] = vl_pis > 0
+            item["tem_credito_cofins"] = vl_cofins > 0
+            item["tem_credito"] = vl_pis > 0 or vl_cofins > 0
+
+            registros.append(item)
 
     return registros

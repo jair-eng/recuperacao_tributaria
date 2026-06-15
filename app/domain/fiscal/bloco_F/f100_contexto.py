@@ -100,11 +100,21 @@ def classificar_registro_f100_por_natureza(
     *,
     db,
     item: dict,
+    mapa_nat_bc_cred: dict | None = None,
 ) -> dict:
+
+    mapa_nat_bc_cred = mapa_nat_bc_cred or {}
+
+    nat = str(item.get("nat_bc_cred") or "00").zfill(2)
+    natureza_real = mapa_nat_bc_cred.get(nat, "")
+
     texto = " ".join([
         str(item.get("desc_doc_oper") or ""),
         str(item.get("participante_nome") or ""),
         str(item.get("participante_tipo") or ""),
+        str(item.get("cod_cta") or ""),
+        nat,
+        str(natureza_real),
     ])
 
     classificacao = classificar_texto_por_natureza_esperada(
@@ -112,7 +122,7 @@ def classificar_registro_f100_por_natureza(
         texto=texto,
         cod_nat="",
         participante_tipo=item.get("participante_tipo"),
-        nat_bc_cred=item.get("nat_bc_cred"),
+        nat_bc_cred=nat,
     )
 
     return {
@@ -125,46 +135,27 @@ def classificar_registro_f100_por_natureza(
         "confianca": classificacao.get("confianca"),
     }
 
-
 def montar_contexto_f100(
     registros_f100: list[dict[str, Any]],
     *,
     db=None,
     fonte: str = "LOCAL",
+    mapa_nat_bc_cred: dict | None = None,
 ) -> dict[str, Any]:
-    f100_pf = filtrar_f100(registros_f100, participante_tipo="PF")
-    f100_pj = filtrar_f100(registros_f100, participante_tipo="PJ")
-    f100_ni = filtrar_f100(registros_f100, participante_tipo="N/I")
 
     if db:
         registros_f100 = [
             classificar_registro_f100_por_natureza(
                 db=db,
                 item=item,
+                mapa_nat_bc_cred=mapa_nat_bc_cred,
             )
             for item in registros_f100
         ]
 
-    f100_cst60_nat14 = filtrar_f100(
-        registros_f100,
-        cst_pis="60",
-        cst_cofins="60",
-        nat_bc_cred="14",
-    )
-
-    f100_pf_cst60_nat14 = filtrar_f100(
-        f100_pf,
-        cst_pis="60",
-        cst_cofins="60",
-        nat_bc_cred="14",
-    )
-
-    f100_pj_cst60_nat14 = filtrar_f100(
-        f100_pj,
-        cst_pis="60",
-        cst_cofins="60",
-        nat_bc_cred="14",
-    )
+    f100_pf = filtrar_f100(registros_f100, participante_tipo="PF")
+    f100_pj = filtrar_f100(registros_f100, participante_tipo="PJ")
+    f100_ni = filtrar_f100(registros_f100, participante_tipo="N/I")
 
     return {
         "fonte": fonte,
@@ -175,35 +166,37 @@ def montar_contexto_f100(
         "qtd_pj": len(f100_pj),
         "qtd_ni": len(f100_ni),
 
-        "vl_total": somar_f100(registros_f100, "vl_oper"),
-        "vl_pf": somar_f100(f100_pf, "vl_oper"),
-        "vl_pj": somar_f100(f100_pj, "vl_oper"),
-        "vl_ni": somar_f100(f100_ni, "vl_oper"),
+        "vl_oper_total": somar_f100(registros_f100, "vl_oper"),
+        "vl_bc_pis_total": somar_f100(registros_f100, "vl_bc_pis"),
+        "vl_pis_total": somar_f100(registros_f100, "vl_pis"),
+        "vl_bc_cofins_total": somar_f100(registros_f100, "vl_bc_cofins"),
+        "vl_cofins_total": somar_f100(registros_f100, "vl_cofins"),
 
-        "cst60_nat14": {
-            "qtd": len(f100_cst60_nat14),
-            "vl_oper": somar_f100(f100_cst60_nat14, "vl_oper"),
-            "vl_bc_pis": somar_f100(f100_cst60_nat14, "vl_bc_pis"),
-            "vl_pis": somar_f100(f100_cst60_nat14, "vl_pis"),
-            "vl_bc_cofins": somar_f100(f100_cst60_nat14, "vl_bc_cofins"),
-            "vl_cofins": somar_f100(f100_cst60_nat14, "vl_cofins"),
-
-            "pf": {
-                "qtd": len(f100_pf_cst60_nat14),
-                "vl_oper": somar_f100(f100_pf_cst60_nat14, "vl_oper"),
-                "vl_pis": somar_f100(f100_pf_cst60_nat14, "vl_pis"),
-                "vl_cofins": somar_f100(f100_pf_cst60_nat14, "vl_cofins"),
-            },
-
-            "pj": {
-                "qtd": len(f100_pj_cst60_nat14),
-                "vl_oper": somar_f100(f100_pj_cst60_nat14, "vl_oper"),
-                "vl_pis": somar_f100(f100_pj_cst60_nat14, "vl_pis"),
-                "vl_cofins": somar_f100(f100_pj_cst60_nat14, "vl_cofins"),
-            },
+        "pf": {
+            "qtd": len(f100_pf),
+            "vl_oper": somar_f100(f100_pf, "vl_oper"),
+            "vl_bc_pis": somar_f100(f100_pf, "vl_bc_pis"),
+            "vl_pis": somar_f100(f100_pf, "vl_pis"),
+            "vl_bc_cofins": somar_f100(f100_pf, "vl_bc_cofins"),
+            "vl_cofins": somar_f100(f100_pf, "vl_cofins"),
         },
 
-        "top_participantes": agregar_f100_por_participante(registros_f100),
-        "top_pf": agregar_f100_por_participante(f100_pf),
-        "top_pj": agregar_f100_por_participante(f100_pj),
+        "pj": {
+            "qtd": len(f100_pj),
+            "vl_oper": somar_f100(f100_pj, "vl_oper"),
+            "vl_bc_pis": somar_f100(f100_pj, "vl_bc_pis"),
+            "vl_pis": somar_f100(f100_pj, "vl_pis"),
+            "vl_bc_cofins": somar_f100(f100_pj, "vl_bc_cofins"),
+            "vl_cofins": somar_f100(f100_pj, "vl_cofins"),
+        },
+
+        "ni": {
+            "qtd": len(f100_ni),
+            "vl_oper": somar_f100(f100_ni, "vl_oper"),
+            "vl_bc_pis": somar_f100(f100_ni, "vl_bc_pis"),
+            "vl_pis": somar_f100(f100_ni, "vl_pis"),
+            "vl_bc_cofins": somar_f100(f100_ni, "vl_bc_cofins"),
+            "vl_cofins": somar_f100(f100_ni, "vl_cofins"),
+        },
+
     }

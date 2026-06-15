@@ -119,17 +119,7 @@ def _item_aderente_dominio_agro(item: NfIcmsItem) -> bool:
 # Item aderente Transportadora
 
 
-def _item_aderente_dominio_transp(
-    item: NfIcmsItem,
-    catalogo: CatalogoFiscal | None = None,
-) -> bool:
-    ncm = _ncm_item_icms(item)
-    desc = _norm_str(_descricao_item_icms(item)).upper()
-    return _match_dominio_transp_catalogo(
-        ncm=ncm,
-        desc=desc,
-        catalogo=catalogo,
-    )
+
 
 def _item_aderente_dominio(
     item: NfIcmsItem,
@@ -143,11 +133,6 @@ def _item_aderente_dominio(
 
     if dom == DOM_AGRO:
         return _item_aderente_dominio_agro(item)
-
-    if dom == DOM_TRANSP:
-        if not catalogo:
-            return False
-        return _item_aderente_dominio_transp(item, catalogo=catalogo)
 
     if dom == DOM_GERAL:
         return True

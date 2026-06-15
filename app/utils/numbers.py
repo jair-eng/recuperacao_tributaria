@@ -87,3 +87,26 @@ def calcular_impacto_estimado(
     impacto = base * ((aliq_pis + aliq_cofins) / 100)
 
     return q2(impacto)
+
+def somar_credito_base(registros: list[dict[str, Any]]) -> Decimal:
+    total = Decimal("0.00")
+
+    for item in registros:
+        total += to_decimal(
+            item.get("vl_bc_pis")
+            or item.get("vl_bc_cofins")
+            or item.get("vl_oper")
+            or item.get("vl_item")
+        )
+
+    return total
+
+def buscar_valor_bloco_m(ctx: dict, periodo: str, nat: str) -> Decimal:
+    efd_por_mes_nat = ctx.get("efd_por_mes_nat") or {}
+
+    item = efd_por_mes_nat.get(f"{periodo}|{nat}")
+
+    if isinstance(item, dict):
+        return to_decimal(item.get("efd_declarada") or 0)
+
+    return to_decimal(item)

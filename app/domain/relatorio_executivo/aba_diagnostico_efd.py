@@ -4,6 +4,8 @@ from collections import defaultdict
 from decimal import Decimal
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
+
+from app.utils.dates import agregar_trimestral, periodo_fechamento_trimestre
 from app.utils.excel import autosize_columns
 from app.utils.numbers import to_decimal
 
@@ -59,20 +61,6 @@ def criar_aba_diagnostico_efd(
 
     linhas_geradas = len(linhas_ecd)
 
-    classificadas_via_heuristica = sum(
-        1
-        for i in linhas_ecd
-        if (i.get("origem_classificacao") or "Heurística") == "Heurística"
-        and i.get("categoria") != "NaoClassificado"
-    )
-
-    classificadas_via_confirmacao = sum(
-        1
-        for i in linhas_ecd
-        if (i.get("origem_classificacao") or "") in {"CSV", "Catalogo", "Confirmada"}
-        and i.get("categoria") != "NaoClassificado"
-    )
-
     confiancas = [
         to_decimal(i.get("confianca"))
         for i in linhas_ecd
@@ -88,16 +76,23 @@ def criar_aba_diagnostico_efd(
         and to_decimal(i.get("confianca")) < Decimal("70")
     }
 
-    meses_ecd = {
-        str(i.get("periodo"))
+    trimestres_ecd = {
+        periodo_fechamento_trimestre(str(i.get("periodo")))
         for i in linhas_ecd
         if i.get("periodo")
     }
 
-    meses_efd = {
-        str(item.get("periodo"))
-        for item in por_natureza.values()
-        if item.get("periodo") and to_decimal(item.get("efd_declarada")) > 0
+    agregado = agregar_trimestral(ctx)
+
+    trimestres_documentados = {
+        item["trimestre"]
+        for item in agregado.values()
+        if (
+                   to_decimal(item.get("valor_creditado_c170"))
+                   + to_decimal(item.get("valor_creditado_f100"))
+                   + to_decimal(item.get("valor_creditado_a170"))
+                   + to_decimal(item.get("valor_sem_credito_a170"))
+           ) > 0
     }
 
     qtd_contas = len(contas)
@@ -107,20 +102,18 @@ def criar_aba_diagnostico_efd(
     metricas = [
         ("Contas com despesa no período", qtd_contas),
         ("Linhas geradas (conta x mês)", linhas_geradas),
-        ("Contas classificadas (heurística OU override)", qtd_classificadas),
+        ("Contas classificadas", qtd_classificadas),
         ("Contas em 'Investigar' (sem match)", qtd_investigar),
         ("% de cobertura da classificação", f"{_pct(qtd_classificadas, qtd_contas)}%"),
-        ("Classificadas via override CSV", classificadas_via_confirmacao),
-        ("Classificadas via heurística", classificadas_via_heuristica),
         ("Confiança média da classificação", f"{_media_decimal(confiancas)}%"),
         ("Contas com confiança < 70% (revisar)", len(contas_baixa_confianca)),
-        ("Meses cobertos na ECD", len(meses_ecd)),
-        ("Meses cobertos na EFD", len(meses_efd)),
+        ("Trimestres com despesa ECD", len(trimestres_ecd)),
+        ("Trimestres com documentação fiscal", len(trimestres_documentados)),
         ("Falhas de leitura de arquivos", 0),
     ]
 
-    ws.merge_cells("A1:D1")
-    ws["A1"] = "Diagnóstico de Entrada — qualidade do plano de contas e da classificação"
+    ws.merge_cells("A1:E1")
+    ws["A1"] = "Distribuição por categoria — ECD x Documentação"
     ws["A1"].font = Font(bold=True, color="FFFFFF", size=12)
     ws["A1"].alignment = Alignment(horizontal="center")
     ws["A1"].fill = PatternFill("solid", fgColor="000080")
@@ -142,7 +135,8 @@ def criar_aba_diagnostico_efd(
     titulo_row = ws.max_row
     ws[f"A{titulo_row}"].font = Font(bold=True)
 
-    ws.append(["Categoria", "Contas distintas", "Despesa total", "Gap"])
+    ws.append(
+        ["Categoria", "Contas distintas", "Despesa ECD", "EFD Documentado", "GAP ECD x Documentação"])
 
     header_row = ws.max_row
     for cell in ws[header_row]:
@@ -152,39 +146,61 @@ def criar_aba_diagnostico_efd(
     por_categoria = defaultdict(
         lambda: {
             "contas": set(),
-            "despesa": Decimal("0.00"),
-            "gap": Decimal("0.00"),
+            "despesa_ecd": Decimal("0.00"),
+            "total_documentado": Decimal("0.00"),
         }
     )
 
+    # ECD por categoria
     for item in linhas_ecd:
         categoria = item.get("categoria") or "NaoClassificado"
         valor = to_decimal(item.get("valor"))
         cod_cta = item.get("cod_cta")
 
-        por_categoria[categoria]["despesa"] += valor
+        por_categoria[categoria]["despesa_ecd"] += valor
 
         if cod_cta:
             por_categoria[categoria]["contas"].add(str(cod_cta))
 
-        if categoria != "NaoClassificado" and item.get("fundamento") != "Investigar":
-            por_categoria[categoria]["gap"] += valor
+    # Documentado por categoria — mesma base da aba Base por Categoria
+    agregado = agregar_trimestral(ctx)
+
+    for item in agregado.values():
+        categoria = item.get("categoria") or "NaoClassificado"
+
+        total_creditado = (
+                to_decimal(item.get("valor_creditado_c170"))
+                + to_decimal(item.get("valor_creditado_f100"))
+                + to_decimal(item.get("valor_creditado_a170"))
+        )
+
+        total_documentado = (
+                total_creditado
+                + to_decimal(item.get("valor_oportunidade_c170"))
+                + to_decimal(item.get("valor_sem_credito_a170"))
+        )
+
+        por_categoria[categoria]["total_documentado"] += total_documentado
 
     for categoria, dados in sorted(
             por_categoria.items(),
-            key=lambda x: (x[0] == "NaoClassificado", -x[1]["despesa"]),
+            key=lambda x: (x[0] == "NaoClassificado", -x[1]["despesa_ecd"]),
     ):
-        gap = dados["gap"] if categoria != "NaoClassificado" else ""
+        despesa_ecd = dados["despesa_ecd"]
+        total_documentado = dados["total_documentado"]
+        gap_ecd = max(Decimal("0.00"), despesa_ecd - total_documentado)
 
         ws.append([
             categoria,
             len(dados["contas"]),
-            dados["despesa"],
-            gap,
+            despesa_ecd,
+            total_documentado,
+            gap_ecd,
+
         ])
 
     for row in range(header_row + 1, ws.max_row + 1):
-        ws[f"C{row}"].number_format = '#,##0.00'
-        ws[f"D{row}"].number_format = '#,##0.00'
+        for col in ["C", "D", "E"]:
+            ws[f"{col}{row}"].number_format = '#,##0.00'
 
     autosize_columns(ws)

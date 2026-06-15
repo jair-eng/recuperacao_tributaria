@@ -1,6 +1,6 @@
 from sqlalchemy import text
 
-from app.utils.ecd_gap_status_utils import eh_categoria_frete
+from app.utils.ecd_gap_utils import eh_categoria_frete
 from app.utils.strings import norm_str, match_palavras
 
 
@@ -53,6 +53,17 @@ def classificar_conta_ecd(
              """),
             {"cod_nat": cod_nat},
     ).mappings().all()
+
+    nat_real = str(nat_bc_cred or "").strip().zfill(2)
+
+    if nat_real and nat_real != "00":
+        rows_nat = [
+            row for row in rows
+            if str(row.get("natureza_codigo") or "").strip().zfill(2) == nat_real
+        ]
+
+        if rows_nat:
+            rows = rows_nat
 
     matches = []
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from app.utils.ecd_gap_status_utils import diagnostico_texto
+from app.utils.ecd_gap_utils import diagnostico_texto
 
 
 SIGLAS_MANTER = {
@@ -71,3 +71,12 @@ def montar_observacao_detalhe(
         return padronizar_descricao_conta(nome_cta)
 
     return diagnostico_texto(status)
+
+def montar_observacao(status: str, modo_recuperacao: str) -> str:
+    if modo_recuperacao == "AUTOMATICA":
+        return "Conta possui vínculo com C170 da EFD Contribuições. Pode ser confrontada futuramente com ICMS/IPI para correção automatizável."
+
+    if modo_recuperacao == "ASSISTIDA":
+        return "Conta possui vínculo com F100. Recuperação depende de revisão documental e validação do suporte da operação."
+
+    return "Conta elegível na ECD sem vínculo suficiente em C170/F100. Exige investigação documental."

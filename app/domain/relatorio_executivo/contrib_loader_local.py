@@ -19,7 +19,6 @@ def carregar_contrib_local(arquivos_contrib: list[Path]) -> dict:
     periodo_atual = None
 
     for arquivo in arquivos_contrib:
-        print(f"[CONTRIB LOCAL] lendo: {arquivo}")
 
         m100_atual = None
         m500_atual = None
@@ -136,5 +135,51 @@ def montar_efd_por_natureza_local(contrib_ctx: dict) -> dict:
             to_decimal(d.get("base_cofins")),
         )
         d["periodo"] = ", ".join(sorted(d["periodos"]))
+
+    return dict(resultado)
+
+
+def montar_efd_por_mes_natureza_local(contrib_ctx: dict) -> dict:
+    resultado = defaultdict(lambda: {
+        "periodo": None,
+        "nat_bc_cred": None,
+        "base_pis": Decimal("0.00"),
+        "base_cofins": Decimal("0.00"),
+        "efd_declarada": Decimal("0.00"),
+    })
+
+    for item in contrib_ctx.get("m105") or []:
+        periodo = item.get("periodo")
+        nat = str(item.get("nat_bc_cred") or "00").zfill(2)
+
+        if not periodo:
+            continue
+
+        chave = f"{periodo}|{nat}"
+        d = resultado[chave]
+
+        d["periodo"] = periodo
+        d["nat_bc_cred"] = nat
+        d["base_pis"] += to_decimal(item.get("vl_bc_pis"))
+
+    for item in contrib_ctx.get("m505") or []:
+        periodo = item.get("periodo")
+        nat = str(item.get("nat_bc_cred") or "00").zfill(2)
+
+        if not periodo:
+            continue
+
+        chave = f"{periodo}|{nat}"
+        d = resultado[chave]
+
+        d["periodo"] = periodo
+        d["nat_bc_cred"] = nat
+        d["base_cofins"] += to_decimal(item.get("vl_bc_cofins"))
+
+    for d in resultado.values():
+        d["efd_declarada"] = max(
+            to_decimal(d.get("base_pis")),
+            to_decimal(d.get("base_cofins")),
+        )
 
     return dict(resultado)

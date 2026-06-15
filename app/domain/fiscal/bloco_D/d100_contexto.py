@@ -103,24 +103,55 @@ def montar_contexto_d100(
         else 0
     )
 
+    matches_entrada = filtrar_d100_por_ind_oper(matches, "contrib", "0")
+    sem_icms_entrada = filtrar_d100_por_ind_oper(sem_icms, "contrib", "0")
+    sem_contrib_entrada = filtrar_d100_por_ind_oper(sem_contrib, "icms", "0")
+
+    vl_matches_contrib_entrada = soma_valor_d100(matches_entrada, "contrib")
+    vl_sem_icms_contrib_entrada = soma_valor_d100(sem_icms_entrada, "contrib")
+    vl_sem_contrib_icms_entrada = soma_valor_d100(sem_contrib_entrada, "icms")
+
     return {
         "fonte": fonte,
         "matches": matches,
         "sem_contrib": sem_contrib,
         "sem_icms": sem_icms,
+
         "qtd_icms": len(d100_icms),
         "qtd_contrib": len(d100_contrib),
         "qtd_matches": len(matches),
         "qtd_sem_contrib": len(sem_contrib),
         "qtd_sem_icms": len(sem_icms),
+
         "vl_matches_icms": soma_valor_d100(matches, "icms"),
         "vl_sem_contrib_icms": soma_valor_d100(sem_contrib, "icms"),
         "vl_sem_icms_contrib": soma_valor_d100(sem_icms, "contrib"),
-         "indicadores": {
-        "pct_match": pct_match,
-        "pct_sem_contrib": pct_sem_contrib,
-        "pct_sem_icms": pct_sem_icms,
-    },
+
+        "entradas": {
+            "qtd_matches": len(matches_entrada),
+            "qtd_sem_icms": len(sem_icms_entrada),
+            "qtd_sem_contrib": len(sem_contrib_entrada),
+
+            # Base já escriturada na EFD Contribuições
+            "vl_efd_contrib": (
+                    vl_matches_contrib_entrada
+                    + vl_sem_icms_contrib_entrada
+            ),
+
+            # Está no ICMS, mas não apareceu na EFD Contribuições
+            "vl_icms_sem_contrib": vl_sem_contrib_icms_entrada,
+
+            "vl_matches_contrib": vl_matches_contrib_entrada,
+            "vl_sem_icms_contrib": vl_sem_icms_contrib_entrada,
+            "vl_sem_contrib_icms": vl_sem_contrib_icms_entrada,
+        },
+
+        "indicadores": {
+            "pct_match": pct_match,
+            "pct_sem_contrib": pct_sem_contrib,
+            "pct_sem_icms": pct_sem_icms,
+        },
+
         "agregacoes": {
             "sem_contrib_por_participante": agregar_d100_por_participante(
                 sem_contrib,

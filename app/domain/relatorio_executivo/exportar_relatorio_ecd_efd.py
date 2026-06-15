@@ -7,11 +7,9 @@ from sqlalchemy.orm import Session
 from app.domain.ecd.ecd_gap_service import montar_contexto_gap_ecd_efd
 from app.domain.fiscal.catalogo.natureza_credito_catalogo import carregar_mapa_nat_bc_cred
 from app.domain.relatorio_executivo.aba_alertas_efd_omissao import criar_aba_alertas_efd_omissao
-from app.domain.relatorio_executivo.aba_bases_efd_por_natureza import criar_aba_bases_efd_por_natureza
-from app.domain.relatorio_executivo.aba_cobertura_por_mes import criar_aba_cobertura_por_mes
-from app.domain.relatorio_executivo.aba_detalhe_completo import criar_aba_detalhe_completo
+from app.domain.relatorio_executivo.aba_base_por_categoria import criar_aba_base_por_categoria
+from app.domain.relatorio_executivo.aba_base_por_natureza import criar_aba_base_por_natureza
 from app.domain.relatorio_executivo.aba_diagnostico_efd import criar_aba_diagnostico_efd
-from app.domain.relatorio_executivo.aba_giagnostico_transp import criar_aba_diagnostico_transp
 from app.domain.relatorio_executivo.aba_investigar import criar_aba_investigar
 from app.domain.relatorio_executivo.aba_resumo import criar_aba_resumo
 from app.domain.relatorio_executivo.aba_categorias import criar_abas_por_categoria
@@ -39,13 +37,9 @@ def exportar_relatorio_executivo_ecd_efd_por_ctx(
 
     dominio = str(ctx.get("dominio") or "GERAL").upper()
 
-    if dominio == "TRANSP":
-        criar_aba_diagnostico_transp(wb, ctx)
-
-    criar_aba_bases_efd_por_natureza(wb, ctx)
-    criar_aba_cobertura_por_mes(wb, ctx)
+    criar_aba_base_por_categoria(wb, ctx)
+    criar_aba_base_por_natureza(wb, ctx)
     criar_aba_diagnostico_efd(wb, ctx)
-    criar_aba_detalhe_completo(wb, ctx)
     criar_aba_investigar(wb, ctx)
     criar_abas_por_categoria(wb, ctx)
 

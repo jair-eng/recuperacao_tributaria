@@ -52,6 +52,31 @@ CFOPS_TRANSP_BLOCO_C = (
 CFOPS_REVENDA_GAS = {"1102", "2102", "3102","1403", "2403", "3403","1652","1653", "2652", "3652","1407", "1403", "2407", "3407",}
 CFOPS_POSTO_COMBUSTIVEL = {"1652", "2652", "3652","1102", "2102", "3102","1403", "2403", "3403","1407", "2407", "3407",}
 
+SLUGS_C170_POR_DOMINIO = {
+    "TRANSP": {
+        "CombustiveisLubrificantes": {
+            "NCM_DIESEL",
+            "NCM_LUBRIFICANTES",
+            "NCM_ARLA32",
+            "TRANSP_DESC_COMBUSTIVEL",
+            "TRANSP_DESC_LUBRIFICANTES",
+            "NCM_ADITIVOS_FLUIDOS",
+            "NCM_GASOLINA",
+        },
+        "PecasManutencaoFrota": {
+            "NCM_MANUTENCAO_VEICULAR",
+            "NCM_PNEUS",
+            "NCM_FILTROS",
+            "NCM_AUTOPECAS",
+            "TRANSP_DESC_MANUTENCAO",
+            "TRANSP_DESC_PNEUS",
+        },
+    }
+}
+
+
+
+
 
 TRANSP_NCM_SLUGS = (
     "TRANSP_NCM_COMBUSTIVEL",
@@ -80,6 +105,7 @@ TRANSP_BUCKETS_DESC = (
     ("TRANSP_DESC_LUBRIFICANTES", "LUBRIFICANTES", 2),
     ("TRANSP_DESC_MANUTENCAO", "MANUTENCAO", 1),
 )
+
 
 # crédito normal posto/autopeças/lubrificantes
 grupos_posto_credito_normal = (

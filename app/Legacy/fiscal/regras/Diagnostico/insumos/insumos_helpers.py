@@ -1,7 +1,8 @@
 from typing import List
 from decimal import Decimal
-from app.Legacy.fiscal.settings_fiscais import TRANSP_BUCKETS_DESC, TRANSP_BUCKETS_NCM
 from typing import Any
+
+from app.Legacy.fiscal.settings_fiscais import TRANSP_BUCKETS_NCM, TRANSP_BUCKETS_DESC
 
 
 def _norm_str(v: Any) -> str:
@@ -158,6 +159,7 @@ def _bucket_transp_por_ncm(
     ncm = str(ncm or "").strip()
     if not ncm:
         return None, 0, [], None
+
 
     for slug, bucket, pontos in TRANSP_BUCKETS_NCM:
         if not cat.match_codigo(slug, ncm):
