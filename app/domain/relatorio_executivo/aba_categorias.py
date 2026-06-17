@@ -40,6 +40,28 @@ def criar_abas_por_categoria(
 ) -> None:
     por_categoria = defaultdict(list)
 
+    # Base nova: período + nat + categoria
+    por_periodo_chave = ctx.get("por_periodo_chave") or {}
+
+    # Total ECD por período/categoria para rateio proporcional
+    total_ecd_periodo_categoria = defaultdict(Decimal)
+    doc_periodo_categoria = defaultdict(Decimal)
+
+    for item in por_periodo_chave.values():
+        periodo = item.get("periodo")
+        categoria = item.get("categoria") or "NaoClassificado"
+
+        if not periodo or categoria == "NaoClassificado":
+            continue
+
+        chave_pc = (periodo, categoria)
+
+        total_ecd_periodo_categoria[chave_pc] += to_decimal(item.get("valor_ecd"))
+
+        doc_periodo_categoria[chave_pc] += to_decimal(
+            item.get("valor_documentado_total")
+        )
+
     for item in ctx.get("linhas_ecd", []):
         categoria = item.get("categoria")
 
@@ -51,31 +73,50 @@ def criar_abas_por_categoria(
 
         por_categoria[categoria].append(item)
 
-
     for categoria, itens in por_categoria.items():
         rows = []
 
         for item in itens:
+            periodo = item.get("periodo")
             valor = to_decimal(item.get("valor"))
-            base = valor
-            gap = valor
 
-            credito_pis = (gap * ALIQUOTA_PIS).quantize(Decimal("0.01"))
-            credito_cofins = (gap * ALIQUOTA_COFINS).quantize(Decimal("0.01"))
+            chave_pc = (periodo, categoria)
+
+            total_ecd_categoria_periodo = total_ecd_periodo_categoria.get(
+                chave_pc,
+                Decimal("0.00"),
+            )
+
+            total_documentado_categoria_periodo = doc_periodo_categoria.get(
+                chave_pc,
+                Decimal("0.00"),
+            )
+
+            if total_ecd_categoria_periodo > 0:
+                base_documentada = (
+                    valor / total_ecd_categoria_periodo
+                ) * total_documentado_categoria_periodo
+            else:
+                base_documentada = Decimal("0.00")
+
+            base_documentada = base_documentada.quantize(Decimal("0.01"))
+
+            gap = max(
+                Decimal("0.00"),
+                valor - base_documentada,
+            ).quantize(Decimal("0.01"))
 
             rows.append(
                 {
-                    "Período": item.get("periodo"),
+                    "Período": periodo,
                     "Código Conta": item.get("cod_cta"),
                     "Descrição": item.get("nome_cta"),
                     "Grupo": item.get("grupo"),
                     "Fundamento": item.get("fundamento"),
                     "Naturezas Esperadas": item.get("naturezas_esperadas"),
                     "Despesa Contábil": valor,
-                    "Base": base,
-                    "Gap": gap,
-                    "Crédito PIS": credito_pis,
-                    "Crédito COFINS": credito_cofins,
+                    "Base Documentada(Rateada)": base_documentada,
+                    "Gap ECD x Documentação": gap,
                     "Fonte": item.get("origem_classificacao") or "Heurística",
                     "Confiança": item.get("confianca"),
                     "Observação": item.get("observacao"),
@@ -93,10 +134,8 @@ def criar_abas_por_categoria(
                 "Fundamento",
                 "Naturezas Esperadas",
                 "Despesa Contábil",
-                "Base",
-                "Gap",
-                "Crédito PIS",
-                "Crédito COFINS",
+                "Base Documentada",
+                "Gap ECD x Documentação",
                 "Fonte",
                 "Confiança",
                 "Observação",
@@ -104,13 +143,10 @@ def criar_abas_por_categoria(
             rows=rows,
             money_cols=[
                 "Despesa Contábil",
-                "Base",
-                "Gap",
-                "Crédito PIS",
-                "Crédito COFINS",
+                "Base Documentada",
+                "Gap ECD x Documentação",
             ],
         )
-
 
         ws = wb[_nome_aba_categoria(categoria)]
 
@@ -139,6 +175,7 @@ def criar_abas_por_categoria(
             f"Naturezas Esperadas: "
             f"{', '.join(map(str, itens[0].get('naturezas_esperadas') or []))}"
         )
+
         ultima_coluna = ws.max_column
         ultima_linha = ws.max_row
 
@@ -147,7 +184,7 @@ def criar_abas_por_categoria(
 
         fill = PatternFill(
             fill_type="solid",
-            fgColor="E7E6E6",  # ajuste para o mesmo azul do seu cabeçalho
+            fgColor="E7E6E6",
         )
 
         font = Font(

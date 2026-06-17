@@ -32,7 +32,6 @@ def criar_aba_investigar(
 
         nat = str(item.get("nat_bc_cred") or "00").zfill(2)
 
-        valor_ecd = to_decimal(item.get("valor_ecd"))
         valor_c170 = to_decimal(item.get("valor_creditado_c170"))
         valor_oportunidade_c170 = to_decimal(item.get("valor_oportunidade_c170"))
         valor_f100 = to_decimal(item.get("valor_creditado_f100"))
@@ -45,7 +44,6 @@ def criar_aba_investigar(
             + valor_oportunidade_c170
             + valor_sem_credito_a170
         )
-        gap_ecd = max(Decimal("0.00"), valor_ecd - total_documentado)
 
         rows.append(
             {
@@ -53,19 +51,23 @@ def criar_aba_investigar(
                 "Cód. Nat.": nat,
                 "Natureza": mapa_nat.get(nat, ""),
                 "Categoria": categoria,
-                "Valor ECD": valor_ecd,
                 "C170 Creditado": valor_c170,
                 "C170 Oportunidade": valor_oportunidade_c170,
                 "F100 Creditado": valor_f100,
                 "A170 Creditado": valor_a170,
                 "Total Creditado": total_creditado,
                 "Total Documentado": total_documentado,
-                "GAP ECD": gap_ecd,
                 "Qtd Contas": int(item.get("qtd_contas") or 0),
                 "Qtd C170": int(item.get("qtd_c170") or 0),
                 "Qtd F100": int(item.get("qtd_f100") or 0),
                 "Qtd A170": int(item.get("qtd_a170") or 0),
                 "Motivo": "Valores agregados sem categoria fiscal classificada.",
+                "Exemplo Descrição": item.get("exemplo_descricao") or "",
+                "Exemplo Participante": item.get("exemplo_participante") or "",
+                "Exemplo Conta": item.get("exemplo_cod_cta") or "",
+                "Exemplo Item": item.get("exemplo_cod_item") or "",
+                "Exemplo NCM": item.get("exemplo_ncm") or "",
+                "Exemplo CFOP": item.get("exemplo_cfop") or "",
             }
         )
 
@@ -75,31 +77,24 @@ def criar_aba_investigar(
         headers=[
             "Ano-Trimestre",
             "Cód. Nat.",
-            "Natureza",
             "Categoria",
-            "Valor ECD",
             "C170 Creditado",
-            "C170 Oportunidade",
             "F100 Creditado",
             "A170 Creditado",
-            "Total Creditado",
             "Total Documentado",
-            "GAP ECD",
-            "Qtd Contas",
-            "Qtd C170",
-            "Qtd F100",
-            "Qtd A170",
+            "Exemplo Descrição",
+            "Exemplo Conta",
+            "Exemplo NCM",
             "Motivo",
         ],
         rows=rows,
         money_cols=[
-            "Valor ECD",
+
             "C170 Creditado",
             "C170 Oportunidade",
             "F100 Creditado",
             "A170 Creditado",
             "Total Creditado",
             "Total Documentado",
-            "GAP ECD",
         ],
     )

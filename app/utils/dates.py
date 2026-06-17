@@ -117,10 +117,26 @@ def agregar_trimestral(ctx: dict) -> dict[str, dict]:
                 "qtd_c170": 0,
                 "qtd_f100": 0,
                 "qtd_a170": 0,
+                "exemplo_descricao": "",
+                "exemplo_participante": "",
+                "exemplo_cod_cta": "",
+                "exemplo_cod_item": "",
+                "exemplo_ncm": "",
+                "exemplo_cfop": "",
             }
 
         agg = agregado[chave]
 
+        for campo in [
+            "exemplo_descricao",
+            "exemplo_participante",
+            "exemplo_cod_cta",
+            "exemplo_cod_item",
+            "exemplo_ncm",
+            "exemplo_cfop",
+        ]:
+            if not agg.get(campo):
+                agg[campo] = item.get(campo) or ""
 
         # ECD já vem no fechamento do trimestre. Evita triplicar.
         if periodo == trimestre:

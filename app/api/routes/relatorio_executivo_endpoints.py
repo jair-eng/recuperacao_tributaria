@@ -38,8 +38,11 @@ def gerar_relatorio_ecd_efd_local(
         nome_arquivo = f"relatorio_executivo_ecd_efd_local_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
         caminho_saida = PASTA_SAIDA / nome_arquivo
 
+        from time import perf_counter
+        t0 = perf_counter()
+
         print("[ROTA] antes gerar_relatorio_executivo_local", flush=True)
-        caminho = gerar_relatorio_executivo_local(
+        arquivo_gerado = gerar_relatorio_executivo_local(
             db=db,
             empresa_id=empresa_id,
             dominio=dominio,
@@ -48,9 +51,13 @@ def gerar_relatorio_ecd_efd_local(
             pasta_icms=PASTA_ICMS,
             caminho_saida=caminho_saida,
         )
-        print("[ROTA] depois gerar_relatorio_executivo_local", flush=True)
+        print(
+            "[ROTA] depois gerar_relatorio_executivo_local | segundos:",
+            round(perf_counter() - t0, 2),
+            flush=True,
+        )
         return FileResponse(
-            path=str(caminho),
+            path=str(arquivo_gerado),
             filename=nome_arquivo,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )

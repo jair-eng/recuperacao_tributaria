@@ -22,16 +22,6 @@ def avaliar_cenarios(meta, classificacao):
         try:
             cenario = fn(meta, classificacao)
 
-            print(
-                "[AVALIAR_CENARIO]",
-                "fn=", nome,
-                "cod_item=", meta.get("cod_item"),
-                "dominio=", meta.get("dominio"),
-                "ativo=", cenario.get("ativo") if cenario else None,
-                "justificativa=", cenario.get("justificativa") if cenario else None,
-                "fundamento=", cenario.get("fundamento_legal") if cenario else None,
-                flush=True,
-            )
 
             if cenario and cenario.get("ativo"):
                 return cenario

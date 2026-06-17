@@ -62,6 +62,28 @@ def cenario_insumo_transportadora(
         ]
         return out
 
+    if produto["gasolina"]:
+
+        periodo = (
+                meta.get("periodo")
+                or meta.get("dt_ini")
+                or meta.get("dt_doc")
+                or meta.get("data_doc")
+        )
+
+        if eh_periodo_lc192(periodo):
+            out["justificativa"].append("gasolina_tratado_pela_lc192")
+            return out
+
+        out["ativo"] = True
+        out["fundamento_legal"] = ["TRANSP_INSUMO_GASOLINA"]
+        out["justificativa"] = [
+            "entrada_insumo",
+            "gasolina",
+            "dominio_transportadora",
+        ]
+        return out
+
     if produto["lubrificante"]:
         out["ativo"] = True
         out["fundamento_legal"] = ["TRANSP_INSUMO_LUBRIFICANTE"]

@@ -9,6 +9,11 @@ from app.domain.fiscal.bloco_F.f100_contexto import montar_contexto_f100
 from app.domain.fiscal.bloco_F.f100_loader_local import carregar_f100_local
 from app.domain.fiscal.bloco_F.f100_participantes import enriquecer_f100_com_participantes
 from app.domain.fiscal.catalogo.natureza_credito_catalogo import carregar_mapa_nat_bc_cred
+from app.domain.relatorio_executivo.IcmsContribuicao.c170_icms_loader_local import carregar_c170_icms_local
+from app.domain.relatorio_executivo.IcmsContribuicao.c170_oportunidades_local import \
+    diagnosticar_oportunidades_c170_local
+from app.domain.relatorio_executivo.IcmsContribuicao.cruzar_c170_icms_contrib_local import \
+    cruzar_c170_icms_contrib_local
 from app.domain.relatorio_executivo.c170_loader_local import carregar_c170_local
 from app.domain.relatorio_executivo.contexto_local_ecd_efd import montar_contexto_gap_ecd_efd_local
 from app.domain.relatorio_executivo.contexto_recuperacao_local import montar_contexto_recuperacao_local
@@ -35,7 +40,10 @@ def gerar_relatorio_executivo_local(
 
     arquivos_ecd = listar_txt(pasta_ecd)
     arquivos_contrib = listar_txt(pasta_contrib)
-    #arquivos_icms = listar_txt(pasta_icms)
+    arquivos_icms = listar_txt(pasta_icms)
+
+    if not arquivos_icms:
+        raise FileNotFoundError(f"Nenhum arquivo .txt encontrado em: {pasta_icms}")
 
     if not arquivos_ecd:
         raise FileNotFoundError(f"Nenhum arquivo .txt encontrado em: {pasta_ecd}")
@@ -88,6 +96,13 @@ def gerar_relatorio_executivo_local(
     a170_contrib = carregar_a170_local(arquivos_contrib)
     contrib_ctx = carregar_contrib_local(arquivos_contrib)
 
+    c170_icms = carregar_c170_icms_local(arquivos_icms)
+
+    linhas_cruzadas_c170 = cruzar_c170_icms_contrib_local(
+        c170_icms=c170_icms,
+        c170_contrib=c170_contrib,
+    )
+
     ctx_recuperacao = montar_contexto_recuperacao_local(
         linhas_ecd=ctx.get("linhas_ecd") or [],
         db=db,
@@ -97,9 +112,13 @@ def gerar_relatorio_executivo_local(
         a170_contrib=a170_contrib,
         dominio=dominio,
     )
-
     ctx.update(ctx_recuperacao)
 
+    ctx["oportunidades_c170"] = diagnosticar_oportunidades_c170_local(
+        db=db,
+        linhas_cruzadas=linhas_cruzadas_c170,
+        dominio=dominio,
+    )
 
     exportar_relatorio_executivo_ecd_efd_por_ctx(
         ctx=ctx,

@@ -105,6 +105,8 @@ def montar_contexto_recuperacao_local(
                 tem_f100=tem_f100,
             )
 
+
+
             linha = {
                 "nat_bc_cred": nat,
                 "categoria": categoria,
@@ -118,15 +120,11 @@ def montar_contexto_recuperacao_local(
                 "qtd_c170_sem_credito": int(
                     c170.get("qtd_c170_sem_credito") or 0
                 ),
-
                 "valor_creditado_f100": valor_f100,
-
                 "valor_creditado_a170": valor_a170,
                 "valor_sem_credito_a170": valor_sem_credito_a170,
-
                 "valor_creditado_total": valor_creditado_total,
                 "valor_documentado_total": valor_documentado_total,
-
                 "valor_gap_ecd": valor_gap_ecd,
 
                 # compatibilidade temporária
@@ -147,6 +145,30 @@ def montar_contexto_recuperacao_local(
                 "status": status,
                 "observacao": montar_observacao(status, modo),
                 "dominio": dominio,
+                "exemplo_descricao": (
+                        c170.get("exemplo_descricao")
+                        or f100.get("exemplo_descricao")
+                        or a170.get("exemplo_descricao")
+                        or ""
+                ),
+                "exemplo_participante": (
+                        c170.get("exemplo_participante")
+                        or f100.get("exemplo_participante")
+                        or ""
+                ),
+                "exemplo_cod_cta": (
+                        c170.get("exemplo_cod_cta")
+                        or f100.get("exemplo_cod_cta")
+                        or a170.get("exemplo_cod_cta")
+                        or ""
+                ),
+                "exemplo_ncm": (
+                        c170.get("exemplo_ncm")
+                        or f100.get("exemplo_ncm")
+                        or a170.get("exemplo_ncm")
+                        or ""
+                ),
+
             }
 
             if por_periodo:

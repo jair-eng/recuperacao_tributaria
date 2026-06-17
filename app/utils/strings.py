@@ -1,6 +1,7 @@
 
 import re
 import unicodedata
+from typing import Any
 
 
 def only_digits(valor):
@@ -45,3 +46,10 @@ def split_palavras(palavras_chave: str) -> list[str]:
         for x in str(palavras_chave or "").split(";")
         if str(x or "").strip()
     ]
+
+def s(v: Any) -> str:
+    return str(v or "").strip()
+
+
+def norm_cod_item(v: Any) -> str:
+    return s(v).upper().replace(" ", "").replace("-", "").replace(".", "")

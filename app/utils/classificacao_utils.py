@@ -37,22 +37,6 @@ def enriquecer_documento_com_categoria(
 
     return novo
 
-def agrupar_por_nat_categoria(registros: list[dict]) -> dict[tuple[str, str], list[dict]]:
-    grupos = defaultdict(list)
-
-    for item in registros:
-        nat = (
-            item.get("nat_bc_cred")
-            or item.get("cod_nat")
-            or item.get("natureza")
-        )
-
-        categoria = item.get("categoria")
-
-        chave = chave_nat_categoria(nat, categoria)
-        grupos[chave].append(item)
-
-    return grupos
 
 def chave_nat_categoria(nat: str | None, categoria: str | None) -> tuple[str, str]:
     return (
@@ -143,6 +127,12 @@ def montar_c170_por_chave(
         "qtd_c170_creditado": 0,
         "qtd_c170_sem_credito": 0,
         "qtd_c170_oportunidade": 0,
+        "exemplo_descricao": "",
+        "exemplo_participante": "",
+        "exemplo_cod_cta": "",
+        "exemplo_cod_item": "",
+        "exemplo_ncm": "",
+        "exemplo_cfop": "",
     })
 
     for item in c170_contrib:
@@ -175,10 +165,46 @@ def montar_c170_por_chave(
         else:
             chave = chave_base
 
+        if not resultado[chave].get("exemplo_descricao"):
+            resultado[chave]["exemplo_descricao"] = (
+                    item.get("descr_item")
+                    or item.get("desc_doc_oper")
+                    or ""
+            )
+
+        if not resultado[chave].get("exemplo_participante"):
+            resultado[chave]["exemplo_participante"] = (
+                item.get("participante_nome")
+            )
+
         base_item = somar_credito_base([item])
         tem_credito = bool(item.get("tem_credito"))
 
         agg = resultado[chave]
+
+        if not agg.get("exemplo_descricao"):
+            agg["exemplo_descricao"] = (
+                    item.get("descr_item_0200")
+                    or item.get("descr_compl")
+                    or item.get("cod_item")
+                    or ""
+            )
+
+        if not agg.get("exemplo_participante"):
+            agg["exemplo_participante"] = item.get("participante_nome") or ""
+
+        if not agg.get("exemplo_cod_cta"):
+            agg["exemplo_cod_cta"] = item.get("cod_cta") or ""
+
+        if not agg.get("exemplo_cod_item"):
+            agg["exemplo_cod_item"] = item.get("cod_item") or ""
+
+        if not agg.get("exemplo_ncm"):
+            agg["exemplo_ncm"] = item.get("ncm") or ""
+
+        if not agg.get("exemplo_cfop"):
+            agg["exemplo_cfop"] = item.get("cfop") or ""
+
         agg["qtd_c170"] += 1
 
         if tem_credito:
@@ -203,6 +229,10 @@ def montar_f100_por_chave(
     resultado = defaultdict(lambda: {
         "valor_creditado_f100": Decimal("0.00"),
         "qtd_f100": 0,
+        "exemplo_descricao": "",
+        "exemplo_participante": "",
+        "exemplo_participante_tipo": "",
+        "exemplo_cod_cta": "",
     })
 
     for item in f100_contrib:
@@ -240,8 +270,22 @@ def montar_f100_por_chave(
                 chave[1],
             )
 
-        resultado[chave]["valor_creditado_f100"] += somar_credito_base([item])
-        resultado[chave]["qtd_f100"] += 1
+        agg = resultado[chave]
+
+        if not agg.get("exemplo_descricao"):
+            agg["exemplo_descricao"] = item.get("desc_doc_oper") or ""
+
+        if not agg.get("exemplo_participante"):
+            agg["exemplo_participante"] = item.get("participante_nome") or ""
+
+        if not agg.get("exemplo_participante_tipo"):
+            agg["exemplo_participante_tipo"] = item.get("participante_tipo") or ""
+
+        if not agg.get("exemplo_cod_cta"):
+            agg["exemplo_cod_cta"] = item.get("cod_cta") or ""
+
+        agg["valor_creditado_f100"] += somar_credito_base([item])
+        agg["qtd_f100"] += 1
 
     return dict(resultado)
 
@@ -258,6 +302,8 @@ def montar_a170_por_chave(
         "qtd_a170": 0,
         "qtd_a170_creditado": 0,
         "qtd_a170_sem_credito": 0,
+        "exemplo_descricao": "",
+        "exemplo_cod_cta": "",
     })
 
     for item in a170_contrib:
@@ -272,7 +318,7 @@ def montar_a170_por_chave(
 
         categoria = cls.get("categoria") or "NaoClassificado"
 
-        nat = cls.get("nat_bc_cred") or item.get("nat_bc_cred") or "00"
+        nat = str(cls.get("nat_bc_cred") or "00").zfill(2)
 
         periodo = item.get("periodo")
 
@@ -292,6 +338,16 @@ def montar_a170_por_chave(
 
         agg = resultado[chave]
         agg["qtd_a170"] += 1
+
+        if not agg.get("exemplo_descricao"):
+            agg["exemplo_descricao"] = (
+                    item.get("descr_item")
+                    or item.get("descricao")
+                    or ""
+            )
+
+        if not agg.get("exemplo_cod_cta"):
+            agg["exemplo_cod_cta"] = item.get("cod_cta") or ""
 
         if tem_credito:
             agg["valor_creditado_a170"] += base_item

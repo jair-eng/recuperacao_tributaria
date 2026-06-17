@@ -1,209 +1,112 @@
-from __future__ import annotations
-
-from collections import defaultdict
-from decimal import Decimal
 from pathlib import Path
-from typing import Any
-
+from collections import Counter
+from decimal import Decimal
+from app.db.session import SessionLocal
+from app.domain.relatorio_executivo.IcmsContribuicao.c170_icms_loader_local import carregar_c170_icms_local
+from app.domain.relatorio_executivo.IcmsContribuicao.c170_oportunidades_local import \
+    diagnosticar_oportunidades_c170_local
+from app.domain.relatorio_executivo.IcmsContribuicao.cruzar_c170_icms_contrib_local import \
+    cruzar_c170_icms_contrib_local
+from app.domain.relatorio_executivo.c170_loader_local import carregar_c170_local
 from app.utils.numbers import to_decimal
-from app.utils.sped import ler_linhas_sped
 
 
 PASTA_ICMS = Path(r"C:\Sped\ICMS_IPI")
-
-
-def listar_txt(pasta: Path) -> list[Path]:
-    return sorted(p for p in pasta.glob("*.txt") if p.is_file())
-
-
-def get(partes: list[str], idx: int, default=None):
-    return partes[idx] if len(partes) > idx else default
-
-
-def carregar_c170_icms_local(arquivos_icms: list[Path]) -> list[dict[str, Any]]:
-    registros = []
-
-    periodo_atual = None
-    c100_atual = None
-    mapa_0200 = {}
-
-    for arquivo in arquivos_icms:
-        c100_atual = None
-
-        for partes in ler_linhas_sped(arquivo):
-            reg = get(partes, 0, "")
-
-            if reg == "0000":
-                dt_ini = get(partes, 4) or get(partes, 6)
-                if dt_ini and len(dt_ini) == 8:
-                    periodo_atual = dt_ini[4:8] + dt_ini[2:4]
-
-            elif reg == "0200":
-                cod_item = get(partes, 1)
-                if cod_item:
-                    mapa_0200[cod_item] = {
-                        "cod_item": cod_item,
-                        "descr_item": get(partes, 2),
-                        "cod_ncm": get(partes, 7),
-                        "tipo_item": get(partes, 6),
-                    }
-
-            elif reg == "C100":
-                c100_atual = {
-                    "arquivo": arquivo.name,
-                    "ind_oper": get(partes, 1),
-                    "ind_emit": get(partes, 2),
-                    "cod_part": get(partes, 3),
-                    "cod_mod": get(partes, 4),
-                    "cod_sit": get(partes, 5),
-                    "ser": get(partes, 6),
-                    "num_doc": get(partes, 7),
-                    "chv_nfe": get(partes, 8),
-                    "dt_doc": get(partes, 9),
-                    "dt_e_s": get(partes, 10),
-                    "vl_doc": to_decimal(get(partes, 11)),
-                }
-
-            elif reg == "C170":
-                if not c100_atual:
-                    continue
-
-                cod_item = get(partes, 2)
-                item_0200 = mapa_0200.get(cod_item) or {}
-
-                registros.append({
-                    "origem": "ICMS_C170",
-                    "arquivo": arquivo.name,
-                    "periodo": periodo_atual,
-
-                    "ind_oper": c100_atual.get("ind_oper"),
-                    "ind_emit": c100_atual.get("ind_emit"),
-                    "cod_part": c100_atual.get("cod_part"),
-                    "cod_mod": c100_atual.get("cod_mod"),
-                    "cod_sit": c100_atual.get("cod_sit"),
-                    "ser": c100_atual.get("ser"),
-                    "num_doc": c100_atual.get("num_doc"),
-                    "chv_nfe": c100_atual.get("chv_nfe"),
-                    "dt_doc": c100_atual.get("dt_doc"),
-                    "dt_e_s": c100_atual.get("dt_e_s"),
-                    "vl_doc": c100_atual.get("vl_doc"),
-
-                    "num_item": get(partes, 1),
-                    "cod_item": cod_item,
-                    "descr_compl": get(partes, 3),
-                    "descr_item_0200": item_0200.get("descr_item"),
-                    "ncm": item_0200.get("cod_ncm"),
-                    "tipo_item": item_0200.get("tipo_item"),
-
-                    "qtd": to_decimal(get(partes, 4)),
-                    "unid": get(partes, 5),
-                    "vl_item": to_decimal(get(partes, 6)),
-                    "vl_desc": to_decimal(get(partes, 7)),
-                    "ind_mov": get(partes, 8),
-
-                    "cst_icms": get(partes, 9),
-                    "cfop": get(partes, 10),
-                    "cod_nat": get(partes, 11),
-                })
-
-    return registros
-
-
-def texto_item(item: dict[str, Any]) -> str:
-    return " ".join([
-        str(item.get("descr_compl") or ""),
-        str(item.get("descr_item_0200") or ""),
-        str(item.get("ncm") or ""),
-        str(item.get("cfop") or ""),
-    ]).upper()
-
-
-def procurar_por_palavras(
-    registros: list[dict[str, Any]],
-    palavras: list[str],
-) -> list[dict[str, Any]]:
-    achados = []
-
-    for item in registros:
-        txt = texto_item(item)
-
-        if any(p.upper() in txt for p in palavras):
-            achados.append(item)
-
-    return achados
-
-
-def resumir(nome: str, registros: list[dict[str, Any]]) -> None:
-    total = sum((to_decimal(x.get("vl_item")) for x in registros), Decimal("0.00"))
-
-    print()
-    print("=" * 80)
-    print(nome)
-    print("=" * 80)
-    print("QTD:", len(registros))
-    print("TOTAL VL_ITEM:", total)
-
-    por_cfop = defaultdict(lambda: {"qtd": 0, "valor": Decimal("0.00")})
-    por_ncm = defaultdict(lambda: {"qtd": 0, "valor": Decimal("0.00")})
-
-    for item in registros:
-        cfop = item.get("cfop") or "SEM_CFOP"
-        ncm = item.get("ncm") or "SEM_NCM"
-
-        por_cfop[cfop]["qtd"] += 1
-        por_cfop[cfop]["valor"] += to_decimal(item.get("vl_item"))
-
-        por_ncm[ncm]["qtd"] += 1
-        por_ncm[ncm]["valor"] += to_decimal(item.get("vl_item"))
-
-    print("\nTOP CFOP:")
-    for cfop, dados in sorted(por_cfop.items(), key=lambda x: x[1]["valor"], reverse=True)[:15]:
-        print(cfop, dados)
-
-    print("\nTOP NCM:")
-    for ncm, dados in sorted(por_ncm.items(), key=lambda x: x[1]["valor"], reverse=True)[:15]:
-        print(ncm, dados)
-
-    print("\nAMOSTRA:")
-    for item in registros[:20]:
-        print(
-            item.get("periodo"),
-            item.get("cfop"),
-            item.get("ncm"),
-            item.get("descr_compl"),
-            item.get("vl_item"),
-            item.get("chv_nfe"),
-        )
+PASTA_CONTRIB = Path(r"C:\Sped\CONTRIB")
 
 
 def main():
-    arquivos_icms = listar_txt(PASTA_ICMS)
+    db = SessionLocal()
 
-    print("Arquivos ICMS:", len(arquivos_icms))
+    try:
+        c170_icms = carregar_c170_icms_local(
+            arquivos_icms=sorted(PASTA_ICMS.glob("*.txt")),
+        )
 
-    icms_c170 = carregar_c170_icms_local(arquivos_icms)
+        c170_contrib = carregar_c170_local(
+            arquivos_contrib=sorted(PASTA_CONTRIB.glob("*.txt")),
+        )
 
-    print("QTD ICMS C170:", len(icms_c170))
-    print("ENTRADAS:", sum(1 for x in icms_c170 if x.get("ind_oper") == "0"))
-    print("SAÍDAS:", sum(1 for x in icms_c170 if x.get("ind_oper") == "1"))
-    print("COM NCM:", sum(1 for x in icms_c170 if x.get("ncm")))
-    print("SEM NCM:", sum(1 for x in icms_c170 if not x.get("ncm")))
+        linhas_cruzadas = cruzar_c170_icms_contrib_local(
+            c170_icms=c170_icms,
+            c170_contrib=c170_contrib,
+        )
 
-    entradas = [x for x in icms_c170 if x.get("ind_oper") == "0"]
+        oportunidades = diagnosticar_oportunidades_c170_local(
+            db=db,
+            linhas_cruzadas=linhas_cruzadas[:2000],
+            dominio="TRANSP",
+        )
 
-    buscas = {
-        "ENERGIA": ["ENERGIA", "ELETRICA", "ELÉTRICA"],
-        "PEDAGIO": ["PEDAGIO", "PEDÁGIO"],
-        "SEGURO": ["SEGURO", "SEGUROS"],
-        "RASTREAMENTO": ["RASTREAMENTO", "MONITORAMENTO", "TELEMETRIA"],
-        "FRETE": ["FRETE", "TRANSPORTE", "CARRETO"],
-        "COMBUSTIVEL": ["DIESEL", "GASOLINA", "ARLA", "LUBRIFICANTE", "OLEO"],
-        "PECAS_MANUTENCAO": ["PECA", "PEÇA", "FILTRO", "PNEU", "JUNTA", "VEDADOR", "MOTOR"],
-    }
+        print("=" * 80)
+        print("OPORTUNIDADES C170 LOCAL")
+        print("=" * 80)
 
-    for nome, palavras in buscas.items():
-        achados = procurar_por_palavras(entradas, palavras)
-        resumir(nome, achados)
+        print("C170 ICMS:", len(c170_icms))
+        print("C170 CONTRIB:", len(c170_contrib))
+        print("LINHAS CRUZADAS:", len(linhas_cruzadas))
+        print("OPORTUNIDADES:", len(oportunidades))
+
+        por_status = Counter(x.get("status_oportunidade") for x in oportunidades)
+        por_categoria = Counter(x.get("categoria") for x in oportunidades)
+        por_nat = Counter(x.get("nat_bc_cred") for x in oportunidades)
+
+        total_base = sum(
+            (to_decimal(x.get("base_recuperavel")) for x in oportunidades),
+            Decimal("0.00"),
+        )
+        total_pis = sum(
+            (to_decimal(x.get("pis_recuperavel")) for x in oportunidades),
+            Decimal("0.00"),
+        )
+        total_cofins = sum(
+            (to_decimal(x.get("cofins_recuperavel")) for x in oportunidades),
+            Decimal("0.00"),
+        )
+
+        print()
+        print("TOTAL BASE:", total_base)
+        print("TOTAL PIS:", total_pis)
+        print("TOTAL COFINS:", total_cofins)
+        print("TOTAL CRÉDITO:", total_pis + total_cofins)
+
+        print()
+        print("POR STATUS")
+        for k, v in por_status.most_common():
+            print(k, v)
+
+        print()
+
+        print("OPORTUNIDADES:", len(oportunidades))
+        print("TOTAL BASE:", total_base)
+        print("TOTAL CRÉDITO:", total_pis + total_cofins)
+
+        print("POR STATUS")
+        for k, v in por_status.most_common():
+            print(k, v)
+
+        print("POR CATEGORIA")
+        for k, v in por_categoria.most_common(20):
+            print(k, v)
+
+        print("POR NAT")
+        for k, v in por_nat.most_common(20):
+            print(k, v)
+
+        for x in oportunidades[:10]:
+            print(x["periodo"], x["status_oportunidade"], x["categoria"], x["cfop"], x["descricao"],
+                  x["base_recuperavel"], x["credito_recuperavel"])
+
+        for x in c170_icms[:20]:
+            print(
+                x.get("cod_item"),
+                x.get("descr_item"),
+                x.get("ncm"),
+                x.get("cod_ncm"),
+            )
+
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

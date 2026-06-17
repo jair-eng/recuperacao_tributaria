@@ -1,5 +1,8 @@
-from typing import Any
+
 from pathlib import Path
+from app.utils.strings import only_digits, s
+from typing import Any, Dict
+
 
 def split_linha_sped(linha: str) -> list[str]:
     return str(linha or "").strip().strip("|").split("|")
@@ -77,3 +80,17 @@ def periodo_de_data_sped(data: str | None) -> str | None:
 
     # DDMMAAAA -> AAAAMM
     return data[4:8] + data[2:4]
+
+def chave_match_item(item):
+    return (
+        only_digits(item.get("chv_nfe")),
+        str(item.get("cod_item") or "").strip(),
+    )
+
+def chave_match_num_item(item):
+    return (
+        only_digits(item.get("chv_nfe")),
+        str(item.get("num_item") or "").strip(),
+    )
+def campo(partes: list[str], idx: int) -> str:
+    return partes[idx] if len(partes) > idx else ""

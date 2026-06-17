@@ -710,7 +710,7 @@ elif page == "0 — Importar SPED":
         try:
             with st.spinner("Gerando Relatório Executivo..."):
                 url = api_url("/relatorio-executivo/ecd-efd/local")
-                resp = requests.post(url, params={"dominio": dominio}, timeout=TIMEOUT)
+                resp = requests.post(url, params={"dominio": dominio}, timeout=900)
 
                 if resp.status_code >= 400:
                     try:
