@@ -46,6 +46,8 @@ def eh_combustivel(meta: Dict[str, Any], catalogo: Any) -> bool:
         return True
     descricao = _texto_item(meta)
     if descricao and catalogo.desc_match("TRANSP_DESC_COMBUSTIVEL", descricao):
+        if eh_manutencao_veicular(meta, catalogo):
+            return False
         return True
 
     return False
@@ -55,6 +57,8 @@ def eh_diesel(meta: Dict[str, Any], catalogo: Any) -> bool:
         return True
     descricao = _texto_item(meta)
     if descricao and catalogo.desc_match("DESC_DIESEL", descricao):
+        if eh_manutencao_veicular(meta, catalogo):
+            return False
         return True
     return False
 
@@ -66,10 +70,12 @@ def eh_gasolina(meta: Dict[str, Any], catalogo: Any) -> bool:
         return True
     return False
 
+
 def eh_etanol(meta: Dict[str, Any], catalogo: Any) -> bool:
     if "NCM_ETANOL" in _grupos_ncm(meta, catalogo):
         return True
     descricao = _texto_item(meta)
+
     if descricao and catalogo.desc_match("DESC_ETANOL", descricao):
         return True
     return False
@@ -92,14 +98,26 @@ def eh_lubrificante(meta: Dict[str, Any], catalogo: Any) -> bool:
     return False
 
 def eh_manutencao_veicular(meta: Dict[str, Any], catalogo: Any) -> bool:
-    return "NCM_MANUTENCAO_VEICULAR" in _grupos_ncm(meta, catalogo)
-
+    if "NCM_MANUTENCAO_VEICULAR" in _grupos_ncm(meta, catalogo):
+        return True
+    descricao = _texto_item(meta)
+    if descricao and catalogo.desc_match("TRANSP_FUNILARIA_PINTURA_DESC", descricao):
+        return True
 
 def eh_pneu(meta: Dict[str, Any], catalogo: Any) -> bool:
     if "NCM_PNEUS" in _grupos_ncm(meta, catalogo):
         return True
     descricao = _texto_item(meta)
     if descricao and catalogo.desc_match("TRANSP_DESC_PNEUS", descricao):
+        return True
+
+    return False
+def eh_rastreamento_telemetria(meta: Dict[str, Any], catalogo: Any) -> bool:
+    if "RASTREAMENTO_TELEMETRIA_NCM" in _grupos_ncm(meta, catalogo):
+        return True
+    descricao = _texto_item(meta)
+
+    if descricao and catalogo.desc_match("RASTREAMENTO_TELEMETRIA_DESC", descricao):
         return True
 
     return False
@@ -117,6 +135,7 @@ def eh_autopeca(meta: Dict[str, Any], catalogo: Any) -> bool:
         "NCM_PECAS_MOTOS",
     } & grupos)
 
+
 def eh_posto_geral(meta: Dict[str, Any], catalogo: Any) -> bool:
     grupos = _grupos_ncm(meta, catalogo)
 
@@ -132,7 +151,14 @@ def eh_aditivo_fluido(meta: Dict[str, Any], catalogo: Any) -> bool:
 
 
 def eh_arla32(meta: Dict[str, Any], catalogo: Any) -> bool:
-    return "NCM_ARLA32" in _grupos_ncm(meta, catalogo)
+    if "NCM_ARLA32" in _grupos_ncm(meta, catalogo):
+        return True
+
+    descricao = _texto_item(meta)
+    if descricao and catalogo.desc_match("DESC_ARLA32", descricao):
+        return True
+
+    return False
 
 def eh_peca_moto(meta: Dict[str, Any], catalogo: Any) -> bool:
     return "NCM_PECAS_MOTOS" in _grupos_ncm(meta, catalogo)
@@ -168,6 +194,37 @@ def eh_fertilizante(meta: Dict[str, Any], catalogo: Any) -> bool:
 
     return False
 
+def eh_ativo_imobilizado(meta: Dict[str, Any], catalogo: Any) -> bool:
+
+    grupos = _grupos_ncm(meta, catalogo)
+
+    grupos_imobilizado = {
+        "ATIVO_IMOBILIZADO_FROTA_NCM",
+        "ATIVO_IMOBILIZADO_TI_NCM",
+        "ATIVO_IMOBILIZADO_OPERACIONAL_NCM",
+        "ATIVO_IMOBILIZADO_ADMIN_NCM",
+    }
+
+    if grupos.intersection(grupos_imobilizado):
+        return True
+
+    descricao = _texto_item(meta)
+
+    if descricao:
+        if catalogo.desc_match("ATIVO_IMOBILIZADO_FROTA_DESC", descricao):
+            return True
+
+        if catalogo.desc_match("ATIVO_IMOBILIZADO_TI_DESC", descricao):
+            return True
+
+        if catalogo.desc_match("ATIVO_IMOBILIZADO_OPERACIONAL_DESC", descricao):
+            return True
+
+        if catalogo.desc_match("ATIVO_IMOBILIZADO_ADMIN_DESC", descricao):
+            return True
+
+    return False
+
 def classificar_produto_fiscal(
     meta: Dict[str, Any],
     catalogo: Any,
@@ -191,4 +248,6 @@ def classificar_produto_fiscal(
         "cafe": eh_cafe(meta, catalogo),
         "embalagem": eh_embalagem(meta, catalogo),
         "posto_geral": eh_posto_geral(meta, catalogo),
+        "ativo_imobilizado": eh_ativo_imobilizado(meta, catalogo),
+        "rastreamento_telemetria": eh_rastreamento_telemetria(meta, catalogo),
     }

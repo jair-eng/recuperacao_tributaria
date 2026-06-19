@@ -137,6 +137,7 @@ def criar_aba_diagnostico_efd(
 
     ws.append(
         ["Categoria", "Contas distintas", "Despesa ECD", "EFD Documentado", "GAP ECD x Documentação"])
+    ws.freeze_panes = "A4"
 
     header_row = ws.max_row
     for cell in ws[header_row]:

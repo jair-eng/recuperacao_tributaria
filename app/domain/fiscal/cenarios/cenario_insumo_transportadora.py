@@ -14,8 +14,11 @@ def cenario_insumo_transportadora(
     operacao = classificacao["operacao"]
     produto = classificacao["produto"]
 
+
+
     out = {
         "ativo": False,
+        "cenario": "TRANSP_INSUMO",
         "fundamento_legal": [],
         "justificativa": [],
     }
@@ -54,6 +57,7 @@ def cenario_insumo_transportadora(
             return out
 
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_DIESEL"
         out["fundamento_legal"] = ["TRANSP_INSUMO_DIESEL"]
         out["justificativa"] = [
             "entrada_insumo",
@@ -76,6 +80,7 @@ def cenario_insumo_transportadora(
             return out
 
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_GASOLINA"
         out["fundamento_legal"] = ["TRANSP_INSUMO_GASOLINA"]
         out["justificativa"] = [
             "entrada_insumo",
@@ -84,8 +89,20 @@ def cenario_insumo_transportadora(
         ]
         return out
 
+    if produto["etanol"]:
+        out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_ETANOL"
+        out["fundamento_legal"] = ["TRANSP_INSUMO_ETANOL"]
+        out["justificativa"] = [
+            "entrada_insumo",
+            "etanol",
+            "dominio_transportadora",
+        ]
+        return out
+
     if produto["lubrificante"]:
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_LUBRIFICANTE"
         out["fundamento_legal"] = ["TRANSP_INSUMO_LUBRIFICANTE"]
         out["justificativa"] = [
             "entrada_insumo",
@@ -96,6 +113,7 @@ def cenario_insumo_transportadora(
 
     if produto["pneu"]:
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_PNEU"
         out["fundamento_legal"] = ["TRANSP_INSUMO_PNEU"]
         out["justificativa"] = [
             "entrada_insumo",
@@ -106,6 +124,7 @@ def cenario_insumo_transportadora(
 
     if produto["filtro"]:
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_FILTRO"
         out["fundamento_legal"] = ["TRANSP_INSUMO_FILTRO"]
         out["justificativa"] = [
             "entrada_insumo",
@@ -116,6 +135,7 @@ def cenario_insumo_transportadora(
 
     if produto["arla32"]:
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_ARLA32"
         out["fundamento_legal"] = ["TRANSP_INSUMO_ARLA32"]
         out["justificativa"] = [
             "entrada_insumo",
@@ -126,10 +146,21 @@ def cenario_insumo_transportadora(
 
     if produto["manutencao_veicular"] or produto["autopeca"]:
         out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_MANUTENCAO_VEICULAR"
         out["fundamento_legal"] = ["TRANSP_INSUMO_MANUTENCAO_VEICULAR"]
         out["justificativa"] = [
             "entrada_insumo",
             "manutencao_veicular",
+            "dominio_transportadora",
+        ]
+        return out
+    if produto["rastreamento_telemetria"]:
+        out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_RASTREAMENTO_TELEMETRIA"
+        out["fundamento_legal"] = ["TRANSP_INSUMO_RASTREAMENTO_TELEMETRIA"]
+        out["justificativa"] = [
+            "entrada_insumo",
+            "rastreamento_telemetria",
             "dominio_transportadora",
         ]
         return out

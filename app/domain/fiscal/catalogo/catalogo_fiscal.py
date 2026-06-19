@@ -128,7 +128,13 @@ class CatalogoFiscal:
 
         for tok in itens:
             t = norm_code(tok)
-            if t and t in v:
+            if not t:
+                continue
+
+            if len(t) < 4:
+                continue
+
+            if t in v:
                 return True
 
         return False
@@ -146,8 +152,11 @@ class CatalogoFiscal:
 
     def grupos_ncm(self, ncm: str) -> Set[str]:
         out = set()
+
         out |= self.grupos_match(ncm, prefixo="NCM_")
         out |= self.grupos_match(ncm, prefixo="AUTO_NCM_")
+        out |= self.grupos_match(ncm, prefixo="ATIVO_IMOBILIZADO_")
+
         return out
 
     # Conveniências

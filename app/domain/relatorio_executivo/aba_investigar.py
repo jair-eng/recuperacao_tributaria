@@ -97,4 +97,5 @@ def criar_aba_investigar(
             "Total Creditado",
             "Total Documentado",
         ],
+
     )
