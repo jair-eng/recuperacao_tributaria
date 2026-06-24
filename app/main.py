@@ -20,8 +20,8 @@ from app.api.routes.relatorio_executivo_endpoints import router as relatorio_exe
 import app.db.models.models_all #  ✅ garante que todos os models foram carregados
 #from app.api.legacy_routes.c170_endpoints import router as c170_router
 from app.api.routes.icms_ipi_endpoints import router as icms_ipi_router
-from app.api.routes.dossie import router as dossie_router
-from app.api.legacy_routes import manual_endpoints
+#from app.api.routes.dossie import router as dossie_router
+#from app.api.legacy_routes import manual_endpoints
 from app.domain.ecd.routes.ecd_endpoints import router as ecd_router
 import logging
 import sys
@@ -68,10 +68,10 @@ app.include_router(empresa_resumo_router)
 app.include_router(empresa_router)
 app.include_router(revision_router)
 #app.include_router(c170_router)
-app.include_router(dossie_router)
+#app.include_router(dossie_router)
 app.include_router(icms_ipi_router)
 app.include_router(relatorio_executivo_router)
-app.include_router(manual_endpoints.router)
+#app.include_router(manual_endpoints.router)
 app.include_router(ecd_router)
 
 

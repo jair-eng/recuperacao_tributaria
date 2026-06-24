@@ -72,6 +72,7 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
 
     mapa_0150 = {}
     mapa_0200 = {}
+    c100_por_chave_contrib = {}
     itens_contrib_materializados = []
 
     for r in registros:
@@ -86,6 +87,15 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             cod_item_0200 = str(get_safe(campos, IDX_0200["cod_item"]) or "").strip()
             if cod_item_0200:
                 mapa_0200[cod_item_0200] = campos
+
+        elif r.reg == "C100":
+            chave_c100 = str(get_safe(campos, 7) or "").strip()
+            if chave_c100:
+                c100_por_chave_contrib[chave_c100] = {
+                    "registro_id_c100": r.id,
+                    "linha_c100": r.linha,
+                    "campos": campos,
+                }
 
 
     periodo_base = str(versao.periodo or "").strip()
@@ -358,13 +368,26 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         )
         modelo = icms_item.base.modelo if icms_item.base else None
 
-        tipo_normalizacao = (
-            "CONTRIB_C100_C170_FALTANTE"
-            if modelo == "55"
-            else "CONTRIB_D100_FALTANTE"
-            if modelo == "57"
-            else "CONTRIB_DOC_FALTANTE"
+        chave_nfe_icms = str(icms_item.chave_nfe or "").strip()
+        c100_contrib = c100_por_chave_contrib.get(chave_nfe_icms)
+
+        registro_id_c100_contrib = (
+            c100_contrib["registro_id_c100"] if c100_contrib else None
         )
+        linha_c100_contrib = (
+            c100_contrib["linha_c100"] if c100_contrib else None
+        )
+
+        if modelo == "55":
+            tipo_normalizacao = (
+                "CONTRIB_SEM_C170"
+                if registro_id_c100_contrib
+                else "CONTRIB_SEM_C100_C170"
+            )
+        elif modelo == "57":
+            tipo_normalizacao = "CONTRIB_D100_FALTANTE"
+        else:
+            tipo_normalizacao = "CONTRIB_DOC_FALTANTE"
 
         if chave_icms in chaves_contrib:
             continue
@@ -386,10 +409,11 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             empresa_id=versao.empresa_id,
             versao_id=versao.id,
             periodo=periodo_base,
+            registro_id_c100=registro_id_c100_contrib,
 
             nf_icms_item_id=icms_item.id,
 
-            tem_no_contrib=False,
+            tem_no_contrib=bool(registro_id_c100_contrib),
             tem_no_icms=True,
             status_cruzamento="SO_ICMS",
 
@@ -423,6 +447,9 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
                 "icms_match": True,
                 "modelo": modelo,
                 "tipo_normalizacao": tipo_normalizacao,
+                "linha_c100": linha_c100_contrib,
+                "contrib_tem_c100": bool(registro_id_c100_contrib),
+                "registro_id_c100": registro_id_c100_contrib,
                 "semantica_fiscal": semantica_fiscal,
             },
         )

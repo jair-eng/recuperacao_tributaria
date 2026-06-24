@@ -13,6 +13,7 @@ import time
 from typing import Any, Dict
 from fastapi import HTTPException, status
 
+from app.domain.fiscal.diagnostico.consolidacao import consolidar_apontamentos
 from app.domain.workflow.preparar_revisao_service import preparar_revisao
 from app.legacy_service.workflow_service import WorkflowService
 from app.schemas.workflow import ApontamentosBatchPayload
@@ -262,6 +263,16 @@ def listar_apontamentos(
                     "versao_revisada_id": int(versao_revisada_id) if versao_revisada_id is not None else None,
                 }
             )
+        items_consolidados = consolidar_apontamentos(
+            itens,
+            campos_chave=[
+                "codigo",
+                "cenario",
+            ],
+            campos_soma=[
+                "impacto_financeiro",
+            ],
+        )
 
         return {
             "versao_id": versao_id,
@@ -269,6 +280,8 @@ def listar_apontamentos(
             "limit": int(limit),
             "offset": int(offset),
             "items": itens,
+            "items_consolidados": items_consolidados,
+            "total_consolidado": len(items_consolidados),
         }
 
 

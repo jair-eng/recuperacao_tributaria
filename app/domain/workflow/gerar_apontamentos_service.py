@@ -49,11 +49,6 @@ def gerar_apontamentos_por_contexto(
             periodo=periodo,
         )
 
-    print(
-        "[GERAR_APONTAMENTOS] itens=",
-        len(itens),
-        flush=True,
-    )
     catalogo = carregar_catalogo_fiscal(db)
     total_diag = 0
 
@@ -115,16 +110,6 @@ def gerar_apontamentos_por_contexto(
 
         score_result = calcular_score_fiscal_contabil(item)
 
-        print(
-            "[SCORE_FISCAL]"
-            f" item={item.cod_item}"
-            f" score={score_result.score}"
-            f" confianca={score_result.confianca}"
-            f" dominio={item.dominio}"
-            f" conta={item.ecd_conta_nome}"
-            f" justificativas={score_result.justificativas}",
-            flush=True,
-        )
         enquadramento = meta.get("enquadramento") or {}
         impacto_estimado = calcular_impacto_estimado(
             vl_item=meta.get("vl_item"),
@@ -133,6 +118,41 @@ def gerar_apontamentos_por_contexto(
             aliq_pis=enquadramento.get("aliq_pis"),
             aliq_cofins=enquadramento.get("aliq_cofins"),
         )
+        status_cruzamento = (
+                meta.get("status_cruzamento")
+                or getattr(item, "status_cruzamento", None)
+        )
+
+        registro_id_c100 = meta.get("registro_id_c100") or getattr(item, "registro_id_c100", None)
+        registro_id_c170 = meta.get("registro_id_c170") or getattr(item, "registro_id_c170", None)
+
+        tipo_normalizacao = (
+                meta.get("tipo_normalizacao")
+                or getattr(item, "tipo_normalizacao", None)
+        )
+
+        if tipo_normalizacao == "CONTRIB_SEM_C170":
+            tipo_corretiva_v2 = "INSERIR_C170_EM_C100_EXISTENTE"
+            registro_id_alvo = registro_id_c100
+            linha_ref = meta.get("linha_c100") or getattr(item, "linha_c100", None)
+
+        elif tipo_normalizacao == "CONTRIB_SEM_C100_C170":
+            tipo_corretiva_v2 = "INSERIR_C100_C170"
+            registro_id_alvo = None
+            linha_ref = None
+
+        elif status_cruzamento == "MATCH" and registro_id_c170:
+            tipo_corretiva_v2 = "PATCH_C170_EXISTENTE"
+            registro_id_alvo = registro_id_c170
+            linha_ref = (
+                    meta.get("linha_c170")
+                    or getattr(item, "linha_c170", None)
+            )
+
+        else:
+            tipo_corretiva_v2 = "NAO_SUPORTADO"
+            registro_id_alvo = None
+            linha_ref = None
 
         ap = EfdApontamento(
             versao_id=versao_id,
@@ -147,9 +167,6 @@ def gerar_apontamentos_por_contexto(
                 **meta,
                 "item_fiscal_consolidado_id": item_fiscal_consolidado_id,
                 "registro_id": registro_id,
-                "registro_id_c100": meta.get("registro_id_c100") or getattr(item, "registro_id_c100", None),
-                "registro_id_c170": meta.get("registro_id_c170") or getattr(item, "registro_id_c170", None),
-                "status_cruzamento": meta.get("status_cruzamento") or getattr(item, "status_cruzamento", None),
                 "origem": meta.get("origem") or "CONTEXTO_FISCAL",
                 "score_fiscal": score_result.score,
                 "confianca_fiscal": score_result.confianca,
@@ -158,6 +175,21 @@ def gerar_apontamentos_por_contexto(
                 "score": score_result.score,
                 "bucket": score_result.confianca,
                 "cenario": meta.get("codigo_cenario"),
+
+                "status_cruzamento": status_cruzamento,
+                "tipo_corretiva_v2": tipo_corretiva_v2,
+                "registro_id_c100": registro_id_c100,
+                "registro_id_c170": registro_id_c170,
+
+                "reg_ancora": (
+                "C170" if tipo_corretiva_v2 == "PATCH_C170_EXISTENTE" else "C100"
+            ),
+                "contrib_tem_c100": bool(registro_id_c100),
+                "registro_id_ancora": registro_id_alvo,
+                "linha_ancora": linha_ref,
+
+                "tipo_normalizacao": tipo_normalizacao,
+
             }),
         )
         db.add(ap)

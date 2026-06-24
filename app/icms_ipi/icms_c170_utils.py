@@ -136,7 +136,6 @@ def montar_linha_c170_de_icms(
         raise ValueError(f"C170 inválido: esperado 37 campos, veio {len(campos)}")
 
     linha = "|" + "|".join(campos) + "|"
-    print("[DBG LINHA MONTADA C170]", linha)
 
     log.debug(
         "C170 montado item_id=%s cod_item=%s cfop=%s cst_pis=%s cst_cofins=%s base=%s vl_pis=%s vl_cofins=%s",
@@ -175,14 +174,19 @@ def _registro_insercao_alvo(
     )
 
 
-def _criar_revisao_insert_c170_faltante(
+def _criar_revisao_insert_c170_faltante_v2(
     db: Session,
     *,
     versao_origem_id: int,
     registro_id_alvo: int | None,
     linha_ref: int | None,
     item_icms: NfIcmsItem,
-    motivo_codigo: str = "CONTRIB_SEM_C170_V1",
+    contexto: str | None = None,
+    aliq_pis: str | None = None,
+    aliq_cofins: str | None = None,
+    cod_cred: str | None = None,
+    nat_bc_cred: str | None = None,
+    motivo_codigo: str = "CREDITO_NAO_APROVEITADO_V2",
     apontamento_id: int | None = None,
 ) -> EfdRevisao | None:
     dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
@@ -190,18 +194,17 @@ def _criar_revisao_insert_c170_faltante(
 
     if not _cfop_elegivel_por_dominio(cfop_item, dominio=dominio):
         logger.info(
-            "[INSERT_C170] SKIP CFOP_NAO_ELEGIVEL_DOMINIO | versao_origem_id=%s | dominio=%s | nf_item_id=%s | cfop=%s | desc=%s",
+            "[INSERT_C170_V2] SKIP CFOP_NAO_ELEGIVEL_DOMINIO | versao=%s | dominio=%s | item=%s | cfop=%s",
             versao_origem_id,
             dominio,
             getattr(item_icms, "id", None),
             cfop_item,
-            getattr(item_icms, "descricao", ""),
         )
         return None
 
     if not registro_id_alvo:
         logger.warning(
-            "[INSERT_C170] SKIP SEM_REGISTRO_ALVO | versao_origem_id=%s | nf_item_id=%s | linha_ref=%s",
+            "[INSERT_C170_V2] SKIP SEM_REGISTRO_ALVO | versao=%s | item=%s | linha_ref=%s",
             versao_origem_id,
             getattr(item_icms, "id", None),
             linha_ref,
@@ -211,6 +214,9 @@ def _criar_revisao_insert_c170_faltante(
     linha_nova = montar_linha_c170_de_icms(
         item_icms,
         dominio=dominio,
+        contexto=contexto,
+        aliq_pis=aliq_pis,
+        aliq_cofins=aliq_cofins,
     )
 
     rv = EfdRevisao(
@@ -221,15 +227,27 @@ def _criar_revisao_insert_c170_faltante(
         acao="INSERT_AFTER",
         revisao_json={
             "linha_nova": linha_nova,
-            "linha_referencia": 0,
+            "linha_referencia": int(linha_ref or 0),
             "nf_icms_item_id": int(item_icms.id),
             "origem": "ICMS_IPI",
-            "motivo": "Item presente no ICMS/IPI e ausente no C170 da EFD Contribuições",
+            "contexto": contexto,
+            "cod_cred": cod_cred,
+            "nat_bc_cred": nat_bc_cred,
+            "meta": {
+                "contexto_credito": contexto,
+                "cod_cred": cod_cred,
+                "nat_bc_cred": nat_bc_cred,
+                "aliq_pis": aliq_pis,
+                "aliq_cofins": aliq_cofins,
+            },
+            "motivo": "Item presente no ICMS/IPI e ausente no C170 da EFD Contribuições.",
         },
         motivo_codigo=motivo_codigo,
         apontamento_id=apontamento_id,
     )
+
     db.add(rv)
+    db.flush()
     return rv
 
 def _ja_existe_revisao_insert_para_item(

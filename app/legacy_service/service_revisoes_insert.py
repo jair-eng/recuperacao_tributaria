@@ -206,13 +206,6 @@ def aplicar_revisoes_insert(
 
                     dados[35] = cod_cta
 
-                    logger.debug(
-                        "COD_CTA preenchido em C170 inserido | reg_alvo=%s linha_alvo=%s cod_cta_final=%s origem_base_0500=%s",
-                        getattr(alvo, "reg", None),
-                        getattr(alvo, "linha", None),
-                        cod_cta,
-                        cod_cta_padrao_0500,
-                    )
 
             pai_id = getattr(alvo, "pai_id", None)
 

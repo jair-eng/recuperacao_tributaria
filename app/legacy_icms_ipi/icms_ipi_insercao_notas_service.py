@@ -24,15 +24,6 @@ log = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 
-CFOPS_VALIDOS_RECUP = {"1101", "1102", "2101", "2102", "3101", "3102"}
-
-def _nota_tem_cfop_valido(itens: list[NfIcmsItem]) -> bool:
-    for it in itens:
-        cfop = str(getattr(it, "cfop", "") or "").strip()
-        if cfop in CFOPS_VALIDOS_RECUP:
-            return True
-    return False
-
 def _listar_chaves_c100_existentes(
     db: Session,
     *,

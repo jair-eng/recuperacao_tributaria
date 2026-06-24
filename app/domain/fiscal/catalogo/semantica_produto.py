@@ -98,11 +98,24 @@ def eh_lubrificante(meta: Dict[str, Any], catalogo: Any) -> bool:
     return False
 
 def eh_manutencao_veicular(meta: Dict[str, Any], catalogo: Any) -> bool:
-    if "NCM_MANUTENCAO_VEICULAR" in _grupos_ncm(meta, catalogo):
-        return True
+    grupos = set(_grupos_ncm(meta, catalogo))
     descricao = _texto_item(meta)
-    if descricao and catalogo.desc_match("TRANSP_FUNILARIA_PINTURA_DESC", descricao):
+
+    if grupos.intersection({
+        "NCM_MANUTENCAO_VEICULAR",
+        "NCM_AUTOPECAS",
+        "NCM_FILTROS",
+    }):
         return True
+
+    if descricao:
+        for slug in {
+            "TRANSP_DESC_MANUTENCAO",
+            "TRANSP_FUNILARIA_PINTURA_DESC",
+        }:
+            if catalogo.desc_match(slug, descricao):
+                return True
+    return False
 
 def eh_pneu(meta: Dict[str, Any], catalogo: Any) -> bool:
     if "NCM_PNEUS" in _grupos_ncm(meta, catalogo):
@@ -124,16 +137,28 @@ def eh_rastreamento_telemetria(meta: Dict[str, Any], catalogo: Any) -> bool:
 
 
 def eh_autopeca(meta: Dict[str, Any], catalogo: Any) -> bool:
-    grupos = _grupos_ncm(meta, catalogo)
 
-    return bool({
+    grupos = set(_grupos_ncm(meta, catalogo))
+    descricao = _texto_item(meta)
+
+    if grupos.intersection({
         "NCM_AUTOPECAS",
         "NCM_MANUTENCAO_VEICULAR",
         "NCM_FILTROS",
         "NCM_ADITIVOS_FLUIDOS",
         "NCM_PNEUS",
         "NCM_PECAS_MOTOS",
-    } & grupos)
+    }):
+        return True
+
+    if descricao:
+        for slug in {
+            "TRANSP_DESC_MANUTENCAO",
+            "TRANSP_FUNILARIA_PINTURA_DESC",
+        }:
+            if catalogo.desc_match(slug, descricao):
+                return True
+    return False
 
 
 def eh_posto_geral(meta: Dict[str, Any], catalogo: Any) -> bool:

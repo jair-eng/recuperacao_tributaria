@@ -263,7 +263,7 @@ def importar_sped_icms(
                 fonte=nota.fonte,
                 nome_arquivo=nome_arquivo,
             )
-            print("[DBG IMPORT] modelo=", getattr(nota, "modelo", None), flush=True)
+
             db.add(base_row)
             db.flush()  # garante id para os itens
             inseridas += 1

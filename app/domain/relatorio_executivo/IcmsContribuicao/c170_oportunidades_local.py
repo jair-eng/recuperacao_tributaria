@@ -1,4 +1,5 @@
 from app.Legacy.fiscal.settings_fiscais import SLUGS_C170_POR_DOMINIO, SLUGS_CST_CREDITAVEIS
+from app.domain.fiscal.catalogo.bloqueio_classificacao_por_dominio import item_bloqueado_classificacao
 from app.domain.fiscal.catalogo.classificacao_fiscal import classificar_item_fiscal
 from app.domain.fiscal.catalogo.semantica_produto import _grupos_ncm
 from app.domain.fiscal.cenarios.avaliador_cenarios import avaliar_cenarios
@@ -52,6 +53,12 @@ def resolver_categoria_c170_por_catalogo(
         or meta.get("descricao")
         or ""
     )
+
+    if item_bloqueado_classificacao(
+        dominio=dominio,
+        descricao=descricao,
+    ):
+        return "NaoClassificado"
 
     for categoria, slugs in regras_dominio.items():
         for slug in slugs:
@@ -110,6 +117,9 @@ def diagnosticar_oportunidades_c170_local(
         for slug in SLUGS_CST_CREDITAVEIS
         for cst in catalogo.codigos(slug)
     }
+
+    cache_classificacao = {}
+    cache_categoria = {}
     cache_enquadramento_por_codigo = {}
 
     for linha in linhas_cruzadas:
@@ -117,18 +127,48 @@ def diagnosticar_oportunidades_c170_local(
         meta = meta_from_linha_cruzada_c170_local(linha)
         meta["dominio"] = dominio
 
-        classificacao = classificar_item_fiscal(
-            meta=meta,
-            catalogo=catalogo,
+        descricao = (
+            meta.get("descr_item")
+            or meta.get("descricao_item")
+            or meta.get("descricao")
+            or ""
         )
+
+        chave_classificacao = (
+            dominio,
+            str(meta.get("cod_item") or "").strip(),
+            str(meta.get("ncm") or "").strip(),
+            descricao.upper().strip(),
+            str(meta.get("cfop") or "").strip(),
+        )
+
+        if chave_classificacao in cache_classificacao:
+            classificacao = cache_classificacao[chave_classificacao]
+        else:
+            classificacao = classificar_item_fiscal(
+                meta=meta,
+                catalogo=catalogo,
+            )
+            cache_classificacao[chave_classificacao] = classificacao
+
         if not classificacao:
             continue
 
-        categoria = resolver_categoria_c170_por_catalogo(
-            meta=meta,
-            catalogo=catalogo,
-            dominio=dominio,
+        chave_categoria = (
+            dominio,
+            str(meta.get("ncm") or "").strip(),
+            descricao.upper().strip(),
         )
+
+        if chave_categoria in cache_categoria:
+            categoria = cache_categoria[chave_categoria]
+        else:
+            categoria = resolver_categoria_c170_por_catalogo(
+                meta=meta,
+                catalogo=catalogo,
+                dominio=dominio,
+            )
+            cache_categoria[chave_categoria] = categoria
 
         if categoria == "NaoClassificado":
             continue
@@ -139,11 +179,9 @@ def diagnosticar_oportunidades_c170_local(
         )
 
         if not cenario:
-
             continue
 
         if not cenario.get("ativo"):
-
             continue
 
         fundamentos = cenario.get("fundamento_legal") or []
@@ -181,9 +219,9 @@ def diagnosticar_oportunidades_c170_local(
         cst_cofins_atual = str(meta_diag.get("cst_cofins_atual") or "").strip().zfill(2)
 
         if (
-                linha.get("status_cruzamento") != "NAO_ESCRITURADO"
-                and cst_pis_atual in csts_creditaveis
-                and cst_cofins_atual in csts_creditaveis
+            linha.get("status_cruzamento") != "NAO_ESCRITURADO"
+            and cst_pis_atual in csts_creditaveis
+            and cst_cofins_atual in csts_creditaveis
         ):
             continue
 
@@ -196,11 +234,11 @@ def diagnosticar_oportunidades_c170_local(
         aliq_cofins = to_decimal(enquadramento.get("aliq_cofins"))
 
         pis_recuperavel = (
-                base_recuperavel * aliq_pis / Decimal("100")
+            base_recuperavel * aliq_pis / Decimal("100")
         ).quantize(Decimal("0.01"))
 
         cofins_recuperavel = (
-                base_recuperavel * aliq_cofins / Decimal("100")
+            base_recuperavel * aliq_cofins / Decimal("100")
         ).quantize(Decimal("0.01"))
 
         problemas = diag.get("problemas") or []
@@ -257,5 +295,13 @@ def diagnosticar_oportunidades_c170_local(
             "num_doc": linha.get("num_doc"),
             "num_item": linha.get("num_item"),
         })
+
+    print("[PERF C170 OPORTUNIDADES]", {
+        "linhas_cruzadas": len(linhas_cruzadas),
+        "cache_classificacao": len(cache_classificacao),
+        "cache_categoria": len(cache_categoria),
+        "cache_enquadramento": len(cache_enquadramento_por_codigo),
+        "oportunidades": len(oportunidades_c170),
+    })
 
     return oportunidades_c170

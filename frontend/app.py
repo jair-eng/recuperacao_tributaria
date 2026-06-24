@@ -1248,20 +1248,25 @@ elif page == "3 — Revisar & Apontamentos":
         apontamentos_raw = {"total": 0, "items": []}
 
     total_backend = None
-    raw = apontamentos_raw or []
-    if isinstance(raw, dict):
-        total_backend = raw.get("total")
-        raw = raw.get("items") or raw.get("apontamentos") or raw.get("data") or []
+    raw = apontamentos_raw or {}
+
+    total_backend = raw.get("total")
+    total_consolidado = raw.get("total_consolidado")
+
+    items = raw.get("items_consolidados") or raw.get("items") or []
 
     apontamentos = []
-    if isinstance(raw, list):
-        for i, it in enumerate(raw, start=1):
-            n = normalize_apontamento(it, i)
-            if n:
-                apontamentos.append(n)
+    for i, it in enumerate(items, start=1):
+        n = normalize_apontamento(it, i)
+        if n:
+            apontamentos.append(n)
 
-    total_ui = int(total_backend) if total_backend is not None else len(apontamentos)
-    pendentes_ui = sum(1 for a in apontamentos if a.get("status") == "Pendente")
+    total_ui = len(apontamentos)
+
+    pendentes_ui = sum(
+        1 for a in apontamentos
+        if str(a.get("status") or "").lower() == "pendente"
+    )
 
     # ---------------------------
     # Métricas (1x, sem duplicar)

@@ -55,21 +55,45 @@ CFOPS_POSTO_COMBUSTIVEL = {"1652", "2652", "3652","1102", "2102", "3102","1403",
 SLUGS_C170_POR_DOMINIO = {
     "TRANSP": {
         "CombustiveisLubrificantes": {
+            "NCM_COMBUSTIVEIS",
             "NCM_DIESEL",
             "NCM_LUBRIFICANTES",
             "NCM_ARLA32",
-            "TRANSP_DESC_COMBUSTIVEL",
-            "TRANSP_DESC_LUBRIFICANTES",
             "NCM_ADITIVOS_FLUIDOS",
             "NCM_GASOLINA",
+            "DESC_DIESEL",
+            "DESC_ETANOL",
+            "TRANSP_DESC_COMBUSTIVEL",
+            "TRANSP_DESC_LUBRIFICANTES",
         },
+
         "PecasManutencaoFrota": {
             "NCM_MANUTENCAO_VEICULAR",
-            "NCM_PNEUS",
-            "NCM_FILTROS",
             "NCM_AUTOPECAS",
+            "NCM_FILTROS",
             "TRANSP_DESC_MANUTENCAO",
+            "MANUTENCAO_VEICULAR_DESC",
+            "TRANSP_DESC_PECAS",
+        },
+
+        "Pneus": {
+            "NCM_PNEUS",
             "TRANSP_DESC_PNEUS",
+        },
+
+        "RastreamentoTelemetria": {
+            "RASTREAMENTO_TELEMETRIA_DESC",
+        },
+
+        "AtivoImobilizado": {
+            "ATIVO_IMOBILIZADO_FROTA_NCM",
+            "ATIVO_IMOBILIZADO_TI_NCM",
+            "ATIVO_IMOBILIZADO_ADMIN_NCM",
+            "ATIVO_IMOBILIZADO_OPERACIONAL_NCM",
+            "ATIVO_IMOBILIZADO_FROTA_DESC",
+            "ATIVO_IMOBILIZADO_TI_DESC",
+            "ATIVO_IMOBILIZADO_ADMIN_DESC",
+            "ATIVO_IMOBILIZADO_OPERACIONAL_DESC",
         },
     }
 }

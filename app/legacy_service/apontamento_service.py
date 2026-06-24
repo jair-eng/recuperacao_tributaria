@@ -63,7 +63,7 @@ class ApontamentoService:
                 .filter(EfdApontamento.resolvido.is_(False))
                 .all()
             )
-            chaves_v2_processadas = set()
+            cache_corretiva_v2 = {}
 
             for ap in aps_v2:
                 meta = ap.meta_json or {}
@@ -71,30 +71,12 @@ class ApontamentoService:
 
                 if status_cruzamento != "SO_ICMS":
                     total_v2_skips += 1
-                    logger.info(
-                        "[RESOLVER_TODOS] V2 skip | apontamento_id=%s | status_cruzamento=%s",
-                        ap.id,
-                        status_cruzamento,
-                    )
                     continue
-
-                chave_nfe = str(meta.get("chave_nfe") or "").strip()
-
-                if chave_nfe and chave_nfe in chaves_v2_processadas:
-                    total_v2_skips += 1
-                    logger.info(
-                        "[RESOLVER_TODOS] V2 skip NF já processada | apontamento_id=%s | chave_nfe=%s",
-                        ap.id,
-                        chave_nfe,
-                    )
-                    continue
-
-                if chave_nfe:
-                    chaves_v2_processadas.add(chave_nfe)
 
                 res_fix = aplicar_corretiva_apontamento_v2(
                     db=db,
                     apontamento_id=int(ap.id),
+                    cache=cache_corretiva_v2,
                 )
                 db.flush()
 
@@ -110,10 +92,9 @@ class ApontamentoService:
                 total_v2_corretivas += 1
 
                 logger.info(
-                    "[RESOLVER_TODOS] V2 OK | apontamento_id=%s | tipo=%s | retorno=%s",
+                    "[RESOLVER_TODOS] V2 OK | apontamento_id=%s | tipo=%s",
                     ap.id,
                     res_fix.get("tipo_corretiva"),
-                    res_fix,
                 )
 
             total_alterado_fix += total_v2_corretivas

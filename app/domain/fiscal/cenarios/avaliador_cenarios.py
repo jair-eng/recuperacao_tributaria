@@ -27,6 +27,7 @@ def avaliar_cenarios(meta, classificacao):
 
 
             if cenario and cenario.get("ativo"):
+
                 return cenario
 
         except Exception as e:

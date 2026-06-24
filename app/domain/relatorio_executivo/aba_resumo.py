@@ -93,6 +93,16 @@ def criar_aba_resumo(
         oportunidades_por_categoria[categoria]["cofins_c170"] += to_decimal(op.get("cofins_recuperavel"))
         oportunidades_por_categoria[categoria]["credito_c170"] += to_decimal(op.get("credito_recuperavel"))
 
+    #####
+    print(
+        "[CATEGORIAS SEM ECD]",
+        sorted(
+            set(oportunidades_por_categoria.keys())
+            - set(por_categoria.keys())
+        )
+    )
+    ###
+
     total_ecd = Decimal("0.00")
     total_documentado = Decimal("0.00")
     total_gap = Decimal("0.00")
@@ -101,13 +111,21 @@ def criar_aba_resumo(
     total_cofins_c170 = Decimal("0.00")
     total_credito_c170 = Decimal("0.00")
 
-    for categoria, dados in sorted(
-            por_categoria.items(),
-            key=lambda x: (
-                    x[0] == "NaoClassificado",
-                    -x[1]["despesa"],
+    todas_categorias = (
+            set(por_categoria.keys())
+            | set(documentado_por_categoria.keys())
+            | set(oportunidades_por_categoria.keys())
+    )
+
+    for categoria in sorted(
+            todas_categorias,
+            key=lambda c: (
+                    c == "NaoClassificado",
+                    -por_categoria.get(c, {}).get("despesa", Decimal("0.00")),
+                    c,
             ),
     ):
+        dados = por_categoria.get(categoria) or {"despesa": Decimal("0.00")}
         despesa = dados["despesa"]
         efd_documentado = documentado_por_categoria.get(categoria) or Decimal("0.00")
         gap = max(Decimal("0.00"), despesa - efd_documentado)

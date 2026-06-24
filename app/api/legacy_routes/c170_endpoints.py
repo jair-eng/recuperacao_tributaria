@@ -219,23 +219,13 @@ def revisar_c170_lote_endpoint(
         # 1) commit das revisões antes do scan (o scan lê EfdRevisao)
         db.commit()
 
-        # 2) auto-scan — lê revisões pendentes e reaplica regras
-        scan = FiscalScanner.scan_versao(
-            db,
-            versao_id=int(versao_id),
-            preservar_resolvidos=True,
-            aplicar_revisoes=True,
-        )
-
-        # 3) commit do scan (ele escreve em efd_apontamento)
-        db.commit()
 
         return {
             "status": "OK",
             "ok": ok,
             "erros": erros,
             "warnings": warnings,
-            "scan": scan,
+
         }
 
     except HTTPException:
