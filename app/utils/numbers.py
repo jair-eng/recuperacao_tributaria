@@ -2,6 +2,19 @@
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
+
+def fmt_aliq_sped(v) -> str:
+    if v is None or v == "":
+        return ""
+
+    s = str(v).strip().replace(",", ".")
+
+    try:
+        return f"{float(s):.4f}".replace(".", ",")
+    except Exception:
+        return str(v).replace(".", ",")
+
+
 def to_decimal(valor: Any) -> Decimal:
     if valor is None:
         return Decimal("0")

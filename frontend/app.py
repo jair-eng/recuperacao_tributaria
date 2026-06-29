@@ -991,6 +991,16 @@ elif page == "2 — Selecionar Versão":
 
     with colA:
         if st.button("➡️ Revisar & Apontamentos"):
+            if status == "GERADA":
+                rr = post(f"/workflow/versao/{versao_id}/revisar")
+                if rr:
+                    try:
+                        cached_empresa_resumo.clear()
+                        cached_resumo_versao.clear()
+                        cached_apontamentos.clear()
+                    except Exception:
+                        pass
+
             goto("3 — Revisar & Apontamentos")
 
     with colB:
@@ -1379,9 +1389,22 @@ elif page == "3 — Revisar & Apontamentos":
 
                 resp = patch(f"/workflow/versao/{versao_id}/resolver_todos", json={})
                 if not resp:
-                    st.stop()  # utils.show_error já mostrou o 500/400
+                    st.stop()
 
                 data = resp.json() or {}
+
+                st.session_state.ap_cache_bust = st.session_state.get("ap_cache_bust", 0) + 1
+
+                try:
+                    cached_apontamentos.clear()
+                except Exception:
+                    pass
+
+                try:
+                    cached_resumo_versao.clear()
+                except Exception:
+                    pass
+
                 clear_after_workflow()
 
                 updated = int(data.get("updated_total", 0) or 0)

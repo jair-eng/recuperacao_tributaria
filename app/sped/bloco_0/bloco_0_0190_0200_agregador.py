@@ -9,7 +9,7 @@ from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_co
 from app.sped.bloco_0.bloco_0_helpers import _norm, _norm_upper, _existe_0190_na_versao, _existe_0200_na_versao
 from typing import Dict, List, Optional
 
-
+from app.utils.sped import montar_cache_mestres_logicos
 
 
 def _resolver_ancora_para_0190(
@@ -74,24 +74,33 @@ def garantir_0190_para_item(
     unid: Optional[str],
     motivo_codigo: str = "CONTRIB_SEM_0190_V1",
     apontamento_id: int | None = None,
+    cache_mestres: dict | None = None,
 ) -> Optional[str]:
+
     unid_final = _norm_upper(unid)
+
     if not unid_final:
         print("[DBG 0190] unidade vazia, skip", flush=True)
         return None
-
-    if _existe_0190_na_versao(
-        db,
-        versao_origem_id=versao_origem_id,
-        unid=unid_final,
-    ):
-
+    if cache_mestres is not None and unid_final in cache_mestres["0190"]:
         return unid_final
 
-    registro_id_alvo, linha_ref = _resolver_ancora_para_0190(
-        db,
-        versao_origem_id=versao_origem_id,
-    )
+    if cache_mestres is None and _existe_0190_na_versao(
+            db,
+            versao_origem_id=versao_origem_id,
+            unid=unid_final,
+    ):
+        return unid_final
+
+    if cache_mestres is not None and cache_mestres.get("ancora_0190"):
+        registro_id_alvo, linha_ref = cache_mestres["ancora_0190"]
+    else:
+        registro_id_alvo, linha_ref = _resolver_ancora_para_0190(
+            db,
+            versao_origem_id=versao_origem_id,
+        )
+        if cache_mestres is not None:
+            cache_mestres["ancora_0190"] = (registro_id_alvo, linha_ref)
 
     # mantém padrão simples e estável
     linha_nova = f"|0190|{unid_final}|Unidade Importada Nfe|"
@@ -111,8 +120,13 @@ def garantir_0190_para_item(
         motivo_codigo=motivo_codigo,
         apontamento_id=apontamento_id,
     )
+
+
     db.add(rv)
     db.flush()
+
+    if cache_mestres is not None:
+        cache_mestres["0190"].add(unid_final)
 
     print(
         "[DBG 0190 CRIADO]",
@@ -137,6 +151,7 @@ def garantir_0200_para_item(
     ncm: Optional[str] = None,
     motivo_codigo: str = "CONTRIB_SEM_0200_V1",
     apontamento_id: int | None = None,
+    cache_mestres: dict | None = None,
 ) -> Optional[str]:
     cod_item_final = _norm(cod_item)
     descr_item_final = _norm(descr_item)
@@ -150,18 +165,25 @@ def garantir_0200_para_item(
     if not descr_item_final:
         descr_item_final = cod_item_final
 
-    if _existe_0200_na_versao(
-        db,
-        versao_origem_id=versao_origem_id,
-        cod_item=cod_item_final,
-    ):
-
+    if cache_mestres is not None and cod_item_final in cache_mestres["0200"]:
         return cod_item_final
 
-    registro_id_alvo, linha_ref = _resolver_ancora_para_0200(
-        db,
-        versao_origem_id=versao_origem_id,
-    )
+    if cache_mestres is None and _existe_0200_na_versao(
+            db,
+            versao_origem_id=versao_origem_id,
+            cod_item=cod_item_final,
+    ):
+        return cod_item_final
+
+    if cache_mestres is not None and cache_mestres.get("ancora_0200"):
+        registro_id_alvo, linha_ref = cache_mestres["ancora_0200"]
+    else:
+        registro_id_alvo, linha_ref = _resolver_ancora_para_0200(
+            db,
+            versao_origem_id=versao_origem_id,
+        )
+        if cache_mestres is not None:
+            cache_mestres["ancora_0200"] = (registro_id_alvo, linha_ref)
 
     # padrão aceito no seu arquivo/PVA
     # |0200|COD_ITEM|DESCR_ITEM|COD_BARRA|COD_ANT_ITEM|UNID_INV|TIPO_ITEM|COD_NCM|EX_IPI|COD_GEN|COD_LST|ALIQ_ICMS|
@@ -198,9 +220,13 @@ def garantir_0200_para_item(
         motivo_codigo=motivo_codigo,
         apontamento_id=apontamento_id,
     )
+
+
     db.add(rv)
     db.flush()
 
+    if cache_mestres is not None:
+        cache_mestres["0200"].add(cod_item_final)
     print(
         "[DBG 0200 CRIADO]",
         {
@@ -386,59 +412,47 @@ def _garantir_mestres_para_notas_elegiveis(
     *,
     versao_origem_id: int,
     notas_elegiveis: List[tuple[NfIcmsBase, List[NfIcmsItem], str]],
+    cache_mestres: dict | None = None,
 ) -> Dict[str, int]:
+
     total_0150 = 0
     total_0190 = 0
     total_0200 = 0
     total_0500 = 0
 
+    if cache_mestres is None:
+        cache_mestres = montar_cache_mestres_logicos(
+            db,
+            versao_origem_id=versao_origem_id,
+        )
+
     unids_vistas: set[str] = set()
     cod_items_vistos: set[str] = set()
 
-    # 0) garante 0500 uma vez só para a versão
-    cod_cta_antes = _existe_0500_conta_padrao_na_versao_ou_revisao(
-        db,
-        versao_origem_id=versao_origem_id,
-        cod_cta="25666",
-    )
-
-    if not cod_cta_antes:
+    if "25666" not in cache_mestres["0500"]:
         garantir_0500_conta_padrao(
             db,
             versao_origem_id=versao_origem_id,
             cod_cta="25666",
             nome_cta="Conta mercadorias",
         )
+        cache_mestres["0500"].add("25666")
         total_0500 += 1
 
     for nf, itens, chave in notas_elegiveis:
         cod_part_nf = _fmt_campo(getattr(nf, "cod_part", None))
         cnpj_nf = _somente_digitos(getattr(nf, "participante_cnpj", None))
 
-        ja_existia_0150_antes = False
-
-        if cod_part_nf:
-            found = _buscar_0150_logico_por_cod_part(
-                db,
-                versao_id=versao_origem_id,
-                cod_part=cod_part_nf,
-            )
-            if found:
-                ja_existia_0150_antes = True
-
-        if not ja_existia_0150_antes and cnpj_nf:
-            found = _buscar_0150_logico_por_cnpj(
-                db,
-                versao_id=versao_origem_id,
-                cnpj=cnpj_nf,
-            )
-            if found:
-                ja_existia_0150_antes = True
+        ja_existia_0150_antes = (
+            cod_part_nf in cache_mestres["0150_cod_part"]
+            or cnpj_nf in cache_mestres["0150_cnpj"]
+        )
 
         cod_part_final = resolver_ou_criar_0150_por_cnpj(
             db,
             versao_id=versao_origem_id,
             nf=nf,
+            cache_mestres=cache_mestres,
         )
 
         nf.cod_part = cod_part_final
@@ -446,37 +460,26 @@ def _garantir_mestres_para_notas_elegiveis(
         if cod_part_final and not ja_existia_0150_antes:
             total_0150 += 1
 
-        # 2) garante 0190/0200 só dos itens desta NF elegível
         for it in itens:
             unid_item = (getattr(it, "unid", None) or "").strip().upper()
             cod_item_item = (getattr(it, "cod_item", None) or "").strip()
             descr_item_item = (getattr(it, "descricao", None) or "").strip()
 
             if unid_item and unid_item not in unids_vistas:
-                existed_0190 = _existe_unidade_0190_na_versao_ou_revisao(
-                    db,
-                    versao_origem_id=versao_origem_id,
-                    unid=unid_item,
-                )
-
-                if not existed_0190:
+                if unid_item not in cache_mestres["0190"]:
                     garantir_0190_para_item(
                         db,
                         versao_origem_id=versao_origem_id,
                         unid=unid_item,
+                        cache_mestres=cache_mestres,
                     )
+                    cache_mestres["0190"].add(unid_item)
                     total_0190 += 1
 
                 unids_vistas.add(unid_item)
 
             if cod_item_item and cod_item_item not in cod_items_vistos:
-                existed_0200 = _existe_cod_item_0200_na_versao_ou_revisao(
-                    db,
-                    versao_origem_id=versao_origem_id,
-                    cod_item=cod_item_item,
-                )
-
-                if not existed_0200:
+                if cod_item_item not in cache_mestres["0200"]:
                     garantir_0200_para_item(
                         db,
                         versao_origem_id=versao_origem_id,
@@ -484,7 +487,9 @@ def _garantir_mestres_para_notas_elegiveis(
                         descr_item=descr_item_item,
                         unid=unid_item,
                         ncm=getattr(it, "ncm", None),
+                        cache_mestres=cache_mestres,
                     )
+                    cache_mestres["0200"].add(cod_item_item)
                     total_0200 += 1
 
                 cod_items_vistos.add(cod_item_item)

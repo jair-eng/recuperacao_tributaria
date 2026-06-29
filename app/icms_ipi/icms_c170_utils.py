@@ -91,13 +91,14 @@ def montar_linha_c170_de_icms(
         "0,00",
         cst_pis_credito,
         fmt_sped_num(base),
-        str(aliq_pis or fmt_sped_num(ALIQUOTA_PIS_PCT)),
+        fmt_sped_num(aliq_pis_pct, casas=4),
         "",
         "",
         fmt_sped_num(vl_pis),
+
         cst_cofins_credito,
         fmt_sped_num(base),
-        str(aliq_cofins or fmt_sped_num(ALIQUOTA_COFINS_PCT)),
+        fmt_sped_num(aliq_cofins_pct, casas=4),
         "",
         "",
         fmt_sped_num(vl_cofins),
@@ -293,18 +294,20 @@ def inserir_c170s_da_nf_encadeados(
 
     registro_id_alvo = getattr(linha_c100, "registro_id", None)
     linha_ref_alvo = int(getattr(linha_c100, "linha", 0) or 0)
+
     dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
     acao = "INSERT_AFTER"
 
+    precisa_encadear = len(itens or []) > 1
 
-    for idx, it in enumerate(itens, start=1):
+    for idx, it in enumerate(itens or [], start=1):
         item_id = int(getattr(it, "id", 0) or 0)
 
         if item_id and _ja_existe_revisao_insert_para_item(
-                db,
-                versao_origem_id=int(versao_origem_id),
-                nf_icms_item_id=item_id,
-                contexto=contexto,
+            db,
+            versao_origem_id=int(versao_origem_id),
+            nf_icms_item_id=item_id,
+            contexto=contexto,
         ):
             log.info(
                 "C170 insert ignorado: revisão já existe | versao=%s item_id=%s contexto=%s",
@@ -322,7 +325,6 @@ def inserir_c170s_da_nf_encadeados(
             aliq_pis=aliq_pis,
             aliq_cofins=aliq_cofins,
         )
-
 
         meta = None
         if str(contexto or "").strip().upper() == "LC192":
@@ -356,8 +358,10 @@ def inserir_c170s_da_nf_encadeados(
         db.add(rv)
         db.flush()
 
-
         total_inseridos += 1
+
+        if not precisa_encadear:
+            continue
 
         linhas = carregar_linhas_logicas_com_revisoes_e_insert(
             db,
@@ -366,6 +370,7 @@ def inserir_c170s_da_nf_encadeados(
         )
 
         linha_c170_inserido = None
+
         for l in linhas:
             if (
                 str(getattr(l, "reg", "")).upper() == "C170"
@@ -375,7 +380,6 @@ def inserir_c170s_da_nf_encadeados(
                 break
 
         if linha_c170_inserido:
-
             registro_id_alvo = getattr(linha_c170_inserido, "registro_id", None)
             linha_ref_alvo = int(getattr(linha_c170_inserido, "linha", 0) or 0)
             acao = "INSERT_AFTER"
@@ -384,133 +388,7 @@ def inserir_c170s_da_nf_encadeados(
                 "C170 pos-overlay miss rv_id=%s nf_id=%s item_id=%s linha_ref_alvo_anterior=%s registro_id_alvo_anterior=%s",
                 rv.id,
                 getattr(nf, "id", None),
-                int(getattr(it, "id", 0) or 0),
-                linha_ref_alvo,
-                registro_id_alvo,
-            )
-
-
-
-
-    return {
-        "total_inseridos": total_inseridos,
-        "registro_id_fim_bloco": registro_id_alvo,
-        "linha_fim_bloco": linha_ref_alvo,
-    }
-
-
-def inserir_c170s_da_nf_encadeados_manual(
-    db: Session,
-    *,
-    versao_origem_id: int,
-    nf: NfIcmsBase,
-    itens: List[NfIcmsItem],
-    linha_c100: LinhaLogica,
-    apontamento_id: int | None = None,
-    contexto: str | None = None,
-) -> Dict[str, Any]:
-    total_inseridos = 0
-
-    registro_id_alvo = getattr(linha_c100, "registro_id", None)
-    linha_ref_alvo = int(getattr(linha_c100, "linha", 0) or 0)
-    dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
-    acao = "INSERT_AFTER"
-
-
-
-
-    for idx, it in enumerate(itens, start=1):
-        log.debug(
-            "C170 item loop idx=%s nf_id=%s item_id=%s num_item=%s cod_item=%s cfop=%s",
-            idx,
-            getattr(nf, "id", None),
-            int(getattr(it, "id", 0) or 0),
-            getattr(it, "num_item", None),
-            getattr(it, "cod_item", None),
-            getattr(it, "cfop", None),
-        )
-
-        linha_nova = montar_linha_c170_de_icms(
-            it,
-            dominio=dominio,
-            contexto="COMBUSTIVEL",
-            fator_base_credito=0.75,
-            aliq_pis="1,6500",
-            aliq_cofins="7,6000",
-        )
-
-
-        meta = None
-
-        if str(contexto or "").strip().upper() == "LC192":
-            meta = {
-                "contexto_credito": "LC192",
-                "tipo_credito": "COMB_LC192_V1",
-                "cod_base_credito": "206",
-                "natureza_credito_m": "206",
-                "cst_pis": "61",
-                "cst_cofins": "61",
-            }
-
-        rv = EfdRevisao(
-            versao_origem_id=int(versao_origem_id),
-            versao_revisada_id=None,
-            registro_id=registro_id_alvo,
-            reg="C170",
-            acao=acao,
-            revisao_json={
-                "linha_nova": linha_nova,
-                "linha_referencia": int(linha_ref_alvo or 0),
-                "nf_icms_item_id": int(it.id),
-                "nf_icms_base_id": int(nf.id),
-                "origem": "ICMS_IPI",
-                "contexto": contexto,
-                "meta": meta,
-            },
-            motivo_codigo="CONTRIB_SEM_C170_MANUAL_V1"
-        )
-
-        db.add(rv)
-        db.flush()
-
-
-        total_inseridos += 1
-
-        linhas = carregar_linhas_logicas_com_revisoes_e_insert(
-            db,
-            versao_origem_id=int(versao_origem_id),
-            versao_final_id=None,
-        )
-
-        linha_c170_inserido = None
-        for l in linhas:
-            if (
-                str(getattr(l, "reg", "")).upper() == "C170"
-                and getattr(l, "revisao_id", None) == rv.id
-            ):
-                linha_c170_inserido = l
-                break
-
-        if linha_c170_inserido:
-            log.debug(
-                "C170 pos-overlay ok rv_id=%s nf_id=%s item_id=%s linha=%s registro_id=%s revisao_id=%s",
-                rv.id,
-                getattr(nf, "id", None),
-                int(getattr(it, "id", 0) or 0),
-                getattr(linha_c170_inserido, "linha", None),
-                getattr(linha_c170_inserido, "registro_id", None),
-                getattr(linha_c170_inserido, "revisao_id", None),
-            )
-
-            registro_id_alvo = getattr(linha_c170_inserido, "registro_id", None)
-            linha_ref_alvo = int(getattr(linha_c170_inserido, "linha", 0) or 0)
-            acao = "INSERT_AFTER"
-        else:
-            log.warning(
-                "C170 pos-overlay miss rv_id=%s nf_id=%s item_id=%s linha_ref_alvo_anterior=%s registro_id_alvo_anterior=%s",
-                rv.id,
-                getattr(nf, "id", None),
-                int(getattr(it, "id", 0) or 0),
+                item_id,
                 linha_ref_alvo,
                 registro_id_alvo,
             )

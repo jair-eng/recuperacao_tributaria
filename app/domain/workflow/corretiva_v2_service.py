@@ -9,10 +9,16 @@ from app.db.models.item_fiscal_consolidado import ItemFiscalConsolidado
 from app.icms_ipi.icms_c170_utils import _criar_revisao_insert_c170_faltante_v2
 from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_nf_icms_na_efd, \
     _resolver_ancora_bloco_c_fim
+from app.legacy_service.c170_service import revisar_c170_lote
 
 from app.sped.bloco_0.bloco_0_0190_0200_agregador import (
     _garantir_mestres_para_notas_elegiveis,
 )
+import logging
+
+from app.utils.numbers import fmt_aliq_sped
+
+logger = logging.getLogger(__name__)
 
 
 def aplicar_corretiva_apontamento_v2(
@@ -62,15 +68,19 @@ def aplicar_corretiva_apontamento_v2(
             apontamento=apontamento,
             item=item,
             meta=meta,
+            cache=cache,
         )
 
     if status_cruzamento == "MATCH":
-        return {
-            "ok": False,
-            "status": "pendente",
-            "msg": "Corretiva MATCH ainda não implementada. Futuro: patch C170 existente.",
-            "tipo_corretiva": "PATCH_C170_EXISTENTE",
-        }
+        return _aplicar_corretiva_match_patch_c170_v2(
+            db=db,
+            apontamento=apontamento,
+            item=item,
+            meta=meta,
+            cache=cache,
+        )
+
+
 
     return {
         "ok": False,
@@ -85,6 +95,7 @@ def _aplicar_corretiva_so_icms_v2(
     apontamento: EfdApontamento,
     item: ItemFiscalConsolidado,
     meta: Dict[str, Any],
+    cache: dict | None = None,
 ) -> Dict[str, Any]:
 
     versao_id = int(apontamento.versao_id)
@@ -126,12 +137,13 @@ def _aplicar_corretiva_so_icms_v2(
         db,
         versao_origem_id=versao_id,
         notas_elegiveis=[(nf, [nf_item], chave)],
+        cache_mestres=(cache or {}).get("cache_mestres"),
     )
 
     enq = meta.get("enquadramento") or {}
     contexto = meta.get("codigo_cenario") or meta.get("cenario")
-    aliq_pis = str(enq.get("aliq_pis") or "")
-    aliq_cofins = str(enq.get("aliq_cofins") or "")
+    aliq_pis = fmt_aliq_sped(enq.get("aliq_pis") or "")
+    aliq_cofins = fmt_aliq_sped(enq.get("aliq_cofins") or "")
 
     tipo_corretiva_v2 = meta.get("tipo_corretiva_v2")
     tipo_normalizacao = meta.get("tipo_normalizacao")
@@ -233,4 +245,131 @@ def _aplicar_corretiva_so_icms_v2(
         "mestres": res_mestres,
         "resultado": res_bloco,
         "msg": "Corretiva V2 SO_ICMS aplicada: C100/C170 propostos via revisão.",
+    }
+
+def _aplicar_corretiva_match_patch_c170_v2(
+    db: Session,
+    *,
+    apontamento: EfdApontamento,
+    item: ItemFiscalConsolidado,
+    meta: Dict[str, Any],
+    cache: dict | None = None,
+) -> Dict[str, Any]:
+
+    versao_id = int(apontamento.versao_id)
+    logger.info(
+        "[MATCH_V2] inicio | ap=%s registro_c170=%s item=%s",
+        apontamento.id,
+        meta.get("registro_id_c170"),
+        item.id,
+    )
+    registro_id_c170 = (
+        meta.get("registro_id_c170")
+        or meta.get("registro_id_ancora")
+        or getattr(item, "registro_id_c170", None)
+    )
+
+    if not registro_id_c170:
+        return {
+            "ok": False,
+            "status": "erro",
+            "msg": "MATCH sem registro_id_c170 para PATCH_C170_EXISTENTE.",
+            "tipo_corretiva": "PATCH_C170_EXISTENTE",
+        }
+
+    enq = meta.get("enquadramento") or {}
+    logger.info(
+        "[MATCH_V2] enquadramento tipos | "
+        "aliq_pis=%r tipo=%s | aliq_cofins=%r tipo=%s",
+        enq.get("aliq_pis"),
+        type(enq.get("aliq_pis")).__name__,
+        enq.get("aliq_cofins"),
+        type(enq.get("aliq_cofins")).__name__,
+    )
+
+    alteracao = {
+        "registro_id": int(registro_id_c170),
+        "cfop": None,
+
+        "cst_pis": str(
+            meta.get("cst_pis_sugerido")
+            or enq.get("cst_pis")
+            or enq.get("cst_destino")
+            or "50"
+        ),
+        "cst_cofins": str(
+            meta.get("cst_cofins_sugerido")
+            or enq.get("cst_cofins")
+            or enq.get("cst_destino")
+            or "50"
+        ),
+
+        "vl_bc_pis": str(
+            meta.get("base_credito_sugerida")
+            or meta.get("vl_bc_pis_sugerida")
+            or meta.get("vl_item")
+            or ""
+        ),
+        "aliq_pis": fmt_aliq_sped( str(
+            meta.get("aliq_pis_sugerida")
+            or enq.get("aliq_pis")
+            or "1,65"
+        )),
+        "vl_pis": str(
+            meta.get("pis_estimado")
+            or meta.get("vl_pis_sugerido")
+            or ""
+        ),
+
+        "vl_bc_cofins": str(
+            meta.get("base_credito_sugerida")
+            or meta.get("vl_bc_cofins_sugerida")
+            or meta.get("vl_item")
+            or ""
+        ),
+        "aliq_cofins": fmt_aliq_sped( str(
+            meta.get("aliq_cofins_sugerida")
+            or enq.get("aliq_cofins")
+            or "7,60"
+        )),
+        "vl_cofins": str(
+            meta.get("cofins_estimado")
+            or meta.get("vl_cofins_sugerido")
+            or ""
+        ),
+    }
+
+    res = revisar_c170_lote(
+        db,
+        versao_origem_id=versao_id,
+        alteracoes=[alteracao],
+        motivo_codigo="CREDITO_NAO_APROVEITADO_V2",
+        apontamento_id=int(apontamento.id),
+    )
+
+    total_alterado = int(res.get("total_alterado") or 0)
+
+    if total_alterado <= 0:
+        return {
+            "ok": False,
+            "status": "skip",
+            "msg": "MATCH encontrado, mas revisão PATCH_C170_EXISTENTE não foi criada.",
+            "tipo_corretiva": "PATCH_C170_EXISTENTE",
+            "resultado": res,
+        }
+
+    apontamento.resolvido = True
+    db.add(apontamento)
+    db.flush()
+
+    return {
+        "ok": True,
+        "status": "OK",
+        "tipo_corretiva": "PATCH_C170_EXISTENTE",
+        "apontamento_id": int(apontamento.id),
+        "versao_id": versao_id,
+        "item_fiscal_consolidado_id": int(item.id),
+        "registro_id_c170": int(registro_id_c170),
+        "resultado": res,
+        "msg": "Corretiva V2 MATCH aplicada: C170 existente ajustado via revisão.",
     }

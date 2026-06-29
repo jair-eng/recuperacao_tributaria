@@ -5,6 +5,9 @@ from app.domain.fiscal.cenarios.cenario_insumo_transportadora import cenario_ins
 from app.domain.fiscal.cenarios.cenario_insumo_cafe import cenario_insumo_cafe
 from app.domain.fiscal.cenarios.cenario_insumo_revenda_gas import cenario_insumo_revenda_gas
 from app.domain.fiscal.cenarios.cenario_ativo_imobilizado import cenario_ativo_imobilizado
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 CENARIOS_FISCAIS = [
@@ -21,7 +24,16 @@ CENARIOS_FISCAIS = [
 def avaliar_cenarios(meta, classificacao):
     for fn in CENARIOS_FISCAIS:
         nome = getattr(fn, "__name__", str(fn))
-
+        logger.warning(
+            "## [DEBUG_TEMP_AVALIAR_CENARIOS_IN] dominio=%s status=%s tipo_norm=%s cfop=%s ncm=%s produto=%s operacao=%s ##",
+            meta.get("dominio"),
+            meta.get("status_cruzamento"),
+            meta.get("tipo_normalizacao"),
+            meta.get("cfop"),
+            meta.get("ncm"),
+            (classificacao or {}).get("produto"),
+            (classificacao or {}).get("operacao"),
+        )
         try:
             cenario = fn(meta, classificacao)
 

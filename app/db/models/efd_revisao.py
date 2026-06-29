@@ -36,7 +36,7 @@ class EfdRevisao(Base):
 
     # rastreabilidade: regra/apontamento que originou a revisão
     motivo_codigo = Column(String(50), nullable=True)
-    apontamento_id = Column(Integer, ForeignKey("efd_apontamento.id"), nullable=True, index=True)
+    apontamento_id = Column(Integer, ForeignKey("efd_apontamento.id", ondelete="SET NULL"), nullable=True, index=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -44,7 +44,7 @@ class EfdRevisao(Base):
     versao_origem = relationship("EfdVersao", foreign_keys=[versao_origem_id])
     versao_revisada = relationship("EfdVersao", foreign_keys=[versao_revisada_id])
     registro = relationship("EfdRegistro", foreign_keys=[registro_id])
-    apontamento = relationship("EfdApontamento", foreign_keys=[apontamento_id])
+    apontamento = relationship("EfdApontamento", foreign_keys=[apontamento_id],passive_deletes=True,)
 
     __table_args__ = (
         Index("ix_efd_revisao_origem_dest", "versao_origem_id", "versao_revisada_id"),

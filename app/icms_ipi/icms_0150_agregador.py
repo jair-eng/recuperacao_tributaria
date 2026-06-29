@@ -314,7 +314,20 @@ def resolver_ou_criar_0150_por_cnpj(
     *,
     versao_id: int,
     nf,
+    cache_mestres: dict | None = None,
 ) -> str:
+
+    cache_0150_cod_part = (
+        cache_mestres.get("0150_cod_part", {})
+        if cache_mestres
+        else None
+    )
+
+    cache_0150_cnpj = (
+        cache_mestres.get("0150_cnpj", {})
+        if cache_mestres
+        else None
+    )
     cod_part_nf = _fmt_campo(getattr(nf, "cod_part", None))
     cnpj_nf = _somente_digitos(getattr(nf, "participante_cnpj", None))
 
@@ -325,11 +338,15 @@ def resolver_ou_criar_0150_por_cnpj(
 
     # 1) tenta por COD_PART no estado lógico
     if cod_part_nf:
-        found = _buscar_0150_logico_por_cod_part(
-            db,
-            versao_id=versao_id,
-            cod_part=cod_part_nf,
-        )
+
+        if cache_0150_cod_part is not None:
+            found = cache_0150_cod_part.get(cod_part_nf)
+        else:
+            found = _buscar_0150_logico_por_cod_part(
+                db,
+                versao_id=versao_id,
+                cod_part=cod_part_nf,
+            )
         if found and _somente_digitos(found.get("cnpj")) == cnpj_nf:
             logger.debug(
                 "0150 lógico match por COD_PART | versao_id=%s cod_part=%s cnpj=%s",
@@ -340,11 +357,14 @@ def resolver_ou_criar_0150_por_cnpj(
             return cod_part_nf
 
     # 2) tenta por CNPJ no estado lógico
-    found = _buscar_0150_logico_por_cnpj(
-        db,
-        versao_id=versao_id,
-        cnpj=cnpj_nf,
-    )
+    if cache_0150_cnpj is not None:
+        found = cache_0150_cnpj.get(cnpj_nf)
+    else:
+        found = _buscar_0150_logico_por_cnpj(
+            db,
+            versao_id=versao_id,
+            cnpj=cnpj_nf,
+        )
     if found:
         cod_part_match = _fmt_campo(found.get("cod_part"))
         if cod_part_match:
@@ -406,6 +426,18 @@ def resolver_ou_criar_0150_por_cnpj(
         nf=nf,
     )
 
+    if cache_0150_cod_part is not None:
+        cache_0150_cod_part[cod_part_nf] = {
+            "cod_part": cod_part_nf,
+            "cnpj": cnpj_nf,
+        }
+
+    if cache_0150_cnpj is not None:
+        cache_0150_cnpj[cnpj_nf] = {
+            "cod_part": cod_part_nf,
+            "cnpj": cnpj_nf,
+        }
+
 
     logger.debug(
         "0150 revisão criada | versao_id=%s rv_id=%s linha_ref=%s cod_part=%s cnpj=%s chave_nfe=%s",
@@ -418,17 +450,18 @@ def resolver_ou_criar_0150_por_cnpj(
     )
 
     # 5) sanity check: só retorna se o 0150 estiver visível no estado lógico
-    if not _validar_0150_logico_para_nf(
-        db,
-        versao_id=versao_id,
-        cod_part=cod_part_nf,
-        cnpj_esperado=cnpj_nf,
-    ):
-        raise ValueError(
-            f"0150 não ficou visível no estado lógico após criação | "
-            f"versao_id={versao_id} cod_part={cod_part_nf} cnpj={cnpj_nf} "
-            f"nf_id={getattr(nf, 'id', None)} chave_nfe={getattr(nf, 'chave_nfe', None)}"
-        )
+    if cache_mestres is None:
+        if not _validar_0150_logico_para_nf(
+            db,
+            versao_id=versao_id,
+            cod_part=cod_part_nf,
+            cnpj_esperado=cnpj_nf,
+        ):
+            raise ValueError(
+                f"0150 não ficou visível no estado lógico após criação | "
+                f"versao_id={versao_id} cod_part={cod_part_nf} cnpj={cnpj_nf} "
+                f"nf_id={getattr(nf, 'id', None)} chave_nfe={getattr(nf, 'chave_nfe', None)}"
+            )
 
     return cod_part_nf
 

@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 from app.db.models import EfdRegistro, EfdRevisao, NfIcmsItem
 from app.db.models.nf_icms_base import NfIcmsBase
 from app.icms_ipi.icms_0150_agregador import resolver_ou_criar_0150_por_cnpj, _fmt_campo
-from app.icms_ipi.icms_c170_utils import inserir_c170s_da_nf_encadeados, inserir_c170s_da_nf_encadeados_manual
+from app.icms_ipi.icms_c170_utils import inserir_c170s_da_nf_encadeados
 from app.icms_ipi.icms_helpers import (
     _campo,
     _only_digits,
     fmt_sped_num,
 )
 from app.icms_ipi.icms_utils_fiscal import _filtrar_notas_elegiveis_por_dominio, _cfop_item_icms
-from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+from types import SimpleNamespace
 from app.sped.bloco_0.bloco_0_0190_0200_agregador import _garantir_mestres_para_notas_elegiveis
 from app.sped.logic.consolidador import _get_dados, consolidar_totais_no_proprio_c100_inserido
 from app.sped.revisao_overlay import LinhaLogica
@@ -337,7 +337,6 @@ def _inserir_bloco_nf_icms_na_efd(
 ) -> Dict[str, Any]:
     chave = _only_digits(getattr(nf, "chave_nfe", None))
 
-    # 1) insere C100
     rv_c100 = _criar_revisao_insert_c100_faltante(
         db,
         versao_origem_id=versao_origem_id,
@@ -360,47 +359,15 @@ def _inserir_bloco_nf_icms_na_efd(
         acao_inicial,
     )
 
-    # 2) recarrega e acha o C100 inserido
-    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
-        db,
-        versao_origem_id=int(versao_origem_id),
-        versao_final_id=None,
+    # Não recarrega overlay aqui.
+    # O C100 acabou de ser criado como revisão; usamos uma âncora lógica mínima.
+    linha_c100 = SimpleNamespace(
+        reg="C100",
+        revisao_id=int(rv_c100.id),
+        registro_id=None,
+        linha=int(linha_ref_alvo or 0),
     )
 
-    linha_c100 = None
-    for l in linhas:
-        if (
-            str(getattr(l, "reg", "")).upper() == "C100"
-            and getattr(l, "revisao_id", None) == rv_c100.id
-        ):
-            linha_c100 = l
-            break
-
-    if not linha_c100:
-        log.warning(
-            "Bloco NF C100 não localizado no overlay nf_id=%s chave=%s revisao_id=%s",
-            nf.id,
-            chave,
-            rv_c100.id,
-        )
-        return {
-            "c100_inserido": 1,
-            "c170_inseridos": 0,
-            "revisao_c100_id": int(rv_c100.id),
-            "registro_id_fim_bloco": registro_id_alvo,
-            "linha_fim_bloco": linha_ref_alvo,
-        }
-
-    log.debug(
-        "Bloco NF C100 localizado nf_id=%s chave=%s revisao_id=%s linha_c100=%s registro_id_c100=%s",
-        nf.id,
-        chave,
-        rv_c100.id,
-        getattr(linha_c100, "linha", None),
-        getattr(linha_c100, "registro_id", None),
-    )
-
-    # 3) insere C170 da nota encadeados após o próprio bloco
     res_c170 = inserir_c170s_da_nf_encadeados(
         db,
         versao_origem_id=versao_origem_id,
@@ -411,124 +378,6 @@ def _inserir_bloco_nf_icms_na_efd(
         fator_base_credito=fator_base_credito,
         aliq_pis=aliq_pis,
         aliq_cofins=aliq_cofins,
-    )
-
-    log.info(
-        "Bloco NF finalizado nf_id=%s chave=%s revisao_c100_id=%s c170_inseridos=%s linha_fim_bloco=%s registro_id_fim_bloco=%s",
-        nf.id,
-        chave,
-        rv_c100.id,
-        int(res_c170["total_inseridos"]),
-        res_c170["linha_fim_bloco"],
-        res_c170["registro_id_fim_bloco"],
-    )
-
-    rv_c100_sum_id = consolidar_totais_no_proprio_c100_inserido(
-        db,
-        versao_origem_id=versao_origem_id,
-        versao_final_id=None,
-        revisao_c100_id=int(rv_c100.id),
-    )
-
-    log.info(
-        "C100 consolidado por soma dos filhos nf_id=%s chave=%s revisao_c100_id=%s revisao_c100_sum_id=%s",
-        nf.id,
-        chave,
-        rv_c100.id,
-        rv_c100_sum_id,
-    )
-
-    return {
-        "c100_inserido": 1,
-        "c170_inseridos": int(res_c170["total_inseridos"]),
-        "revisao_c100_id": int(rv_c100.id),
-        "registro_id_fim_bloco": res_c170["registro_id_fim_bloco"],
-        "linha_fim_bloco": res_c170["linha_fim_bloco"],
-    }
-
-def _inserir_bloco_nf_icms_na_efd_manual(
-    db: Session,
-    *,
-    versao_origem_id: int,
-    nf: NfIcmsBase,
-    itens: List[NfIcmsItem],
-    registro_id_alvo: int | None,
-    linha_ref_alvo: int,
-    acao_inicial: str,
-    apontamento_id: int | None = None,
-) -> Dict[str, Any]:
-    chave = _only_digits(getattr(nf, "chave_nfe", None))
-
-    # 1) insere C100
-    rv_c100 = _criar_revisao_insert_c100_faltante(
-        db,
-        versao_origem_id=versao_origem_id,
-        registro_id_alvo=registro_id_alvo,
-        linha_ref=linha_ref_alvo,
-        nf=nf,
-        motivo_codigo="CONTRIB_SEM_C100_MANUAL_V1",
-        apontamento_id=apontamento_id,
-        acao=acao_inicial,
-    )
-    db.flush()
-
-    log.info(
-        "Bloco NF C100 criado nf_id=%s chave=%s revisao_id=%s registro_id_alvo=%s linha_ref_alvo=%s acao=%s",
-        nf.id,
-        chave,
-        rv_c100.id,
-        registro_id_alvo,
-        linha_ref_alvo,
-        acao_inicial,
-    )
-
-    # 2) recarrega e acha o C100 inserido
-    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
-        db,
-        versao_origem_id=int(versao_origem_id),
-        versao_final_id=None,
-    )
-
-    linha_c100 = None
-    for l in linhas:
-        if (
-            str(getattr(l, "reg", "")).upper() == "C100"
-            and getattr(l, "revisao_id", None) == rv_c100.id
-        ):
-            linha_c100 = l
-            break
-
-    if not linha_c100:
-        log.warning(
-            "Bloco NF C100 não localizado no overlay nf_id=%s chave=%s revisao_id=%s",
-            nf.id,
-            chave,
-            rv_c100.id,
-        )
-        return {
-            "c100_inserido": 1,
-            "c170_inseridos": 0,
-            "revisao_c100_id": int(rv_c100.id),
-            "registro_id_fim_bloco": registro_id_alvo,
-            "linha_fim_bloco": linha_ref_alvo,
-        }
-
-    log.debug(
-        "Bloco NF C100 localizado nf_id=%s chave=%s revisao_id=%s linha_c100=%s registro_id_c100=%s",
-        nf.id,
-        chave,
-        rv_c100.id,
-        getattr(linha_c100, "linha", None),
-        getattr(linha_c100, "registro_id", None),
-    )
-
-    # 3) insere C170 da nota encadeados após o próprio bloco
-    res_c170 = inserir_c170s_da_nf_encadeados_manual(
-        db,
-        versao_origem_id=versao_origem_id,
-        nf=nf,
-        itens=itens,
-        linha_c100=linha_c100,
     )
 
     log.info(
@@ -796,88 +645,3 @@ def inserir_notas_icms_ausentes_na_efd(
         "mensagens": mensagens,
         "escopo_nf_icms_base_ids": sorted(nf_ids_filtro) if nf_ids_filtro else [],
     }
-
-def aplicar_correcao_c100_faltante_manual(
-    db: Session,
-    *,
-    versao_origem_id: int,
-    empresa_id: int,
-    nf_icms_base_id: int,
-    nf_icms_item_ids: list[int] | None = None,
-    apontamento_id: int | None = None,
-) -> Dict[str, Any]:
-
-    log.warning(
-        "[C100_MANUAL] INICIO | versao=%s nf_id=%s itens=%s",
-        versao_origem_id,
-        nf_icms_base_id,
-        nf_icms_item_ids,
-    )
-
-    # 1) buscar NF
-    nf = db.query(NfIcmsBase).filter(
-        NfIcmsBase.id == int(nf_icms_base_id)
-    ).first()
-
-    if not nf:
-        return {"status": "erro", "msg": "NF não encontrada"}
-
-    # 2) buscar itens
-    itens = (
-        db.query(NfIcmsItem)
-        .filter(NfIcmsItem.nf_icms_base_id == int(nf_icms_base_id))
-        .order_by(NfIcmsItem.id.asc())
-        .all()
-    )
-
-    if nf_icms_item_ids:
-        ids_ok = {int(x) for x in nf_icms_item_ids if int(x or 0) > 0}
-        itens = [it for it in itens if int(it.id) in ids_ok]
-
-    if not itens:
-        return {"status": "vazio", "msg": "Nenhum item elegível"}
-
-    # 3) validar chave
-    chave = _only_digits(getattr(nf, "chave_nfe", None))
-    if not chave:
-        return {"status": "erro", "msg": "NF sem chave"}
-
-    # 4) verificar se já existe C100
-    chaves_existentes, _ = _listar_chaves_c100_existentes(
-        db,
-        versao_origem_id=versao_origem_id,
-    )
-
-    if chave in chaves_existentes:
-        return {"status": "skip", "msg": "C100 já existe"}
-
-    # 5) garantir mestres
-    notas_elegiveis = [(nf, itens, chave)]
-
-    _garantir_mestres_para_notas_elegiveis(
-        db,
-        versao_origem_id=versao_origem_id,
-        notas_elegiveis=notas_elegiveis,
-    )
-
-    # 6) resolver âncora
-    registro_id_alvo, linha_ref_alvo, acao_inicial = _resolver_ancora_bloco_c_fim(
-        db,
-        versao_origem_id=versao_origem_id,
-    )
-
-    # 7) inserir bloco manual
-    res = _inserir_bloco_nf_icms_na_efd_manual(
-        db,
-        versao_origem_id=versao_origem_id,
-        nf=nf,
-        itens=itens,
-        registro_id_alvo=registro_id_alvo,
-        linha_ref_alvo=linha_ref_alvo,
-        acao_inicial=acao_inicial,
-        apontamento_id=apontamento_id,
-    )
-
-    log.warning("[C100_MANUAL] RESULTADO | res=%s", res)
-
-    return res

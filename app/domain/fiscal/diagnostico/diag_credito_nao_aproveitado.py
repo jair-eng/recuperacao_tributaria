@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from app.utils.numbers import  dec_any
+
+from app.Legacy.fiscal.settings_fiscais import CSTS_CREDITAVEIS
+from app.utils.numbers import dec_any
 
 
 def diagnosticar_credito_nao_aproveitado(
@@ -14,6 +16,7 @@ def diagnosticar_credito_nao_aproveitado(
         return None
 
     enquadramento = cenario.get("enquadramento") or {}
+
     if not enquadramento:
         return {
             "ativo": True,
@@ -26,6 +29,8 @@ def diagnosticar_credito_nao_aproveitado(
             },
         }
 
+    csts_creditaveis = {str(cst or "").strip().zfill(2) for cst in (CSTS_CREDITAVEIS  or set())}
+
     cst_pis_atual = str(meta.get("cst_pis") or "").zfill(2)
     cst_cofins_atual = str(meta.get("cst_cofins") or "").zfill(2)
 
@@ -36,6 +41,16 @@ def diagnosticar_credito_nao_aproveitado(
     vl_bc_cofins = dec_any(meta.get("vl_bc_cofins") or meta.get("base_cofins"))
     vl_pis = dec_any(meta.get("vl_pis"))
     vl_cofins = dec_any(meta.get("vl_cofins"))
+
+    if (
+        cst_pis_atual in csts_creditaveis
+        and cst_cofins_atual in csts_creditaveis
+        and vl_bc_pis > 0
+        and vl_bc_cofins > 0
+        and vl_pis > 0
+        and vl_cofins > 0
+    ):
+        return None
 
     problemas = []
 
@@ -78,10 +93,8 @@ def diagnosticar_credito_nao_aproveitado(
             "codigo_cenario": codigo_cenario,
             "fundamento_legal": cenario.get("fundamento_legal"),
             "enquadramento": enquadramento,
-
             "cod_cred": enquadramento.get("cod_cred"),
             "nat_bc_cred": enquadramento.get("nat_bc_cred"),
-
             "classificacao": classificacao,
             "cst_pis_atual": cst_pis_atual,
             "cst_cofins_atual": cst_cofins_atual,

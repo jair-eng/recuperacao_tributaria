@@ -1,8 +1,11 @@
 
 from pathlib import Path
+
+from app.icms_ipi.icms_0150_agregador import _fmt_campo
+from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.utils.strings import only_digits, s
 from typing import Any, Dict
-
+from sqlalchemy.orm import Session
 
 def split_linha_sped(linha: str) -> list[str]:
     return str(linha or "").strip().strip("|").split("|")
@@ -94,3 +97,67 @@ def chave_match_num_item(item):
     )
 def campo(partes: list[str], idx: int) -> str:
     return partes[idx] if len(partes) > idx else ""
+
+def montar_cache_mestres_logicos(
+    db: Session,
+    *,
+    versao_origem_id: int,
+) -> dict:
+    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
+        db,
+        versao_origem_id=int(versao_origem_id),
+        versao_final_id=None,
+    )
+
+    cache = {
+        "0150_cod_part": {},
+        "0150_cnpj": {},
+        "0190": set(),
+        "0200": set(),
+        "0500": set(),
+        "ancora_0190": None,
+        "ancora_0200": None,
+    }
+
+    for l in linhas:
+        reg = str(getattr(l, "reg", "") or "").upper()
+        dados = list(getattr(l, "dados", []) or [])
+
+        if dados and str(dados[0]).upper() == reg:
+            dados = dados[1:]
+
+        if reg == "0150":
+            cod_part = _fmt_campo(dados[0] if len(dados) > 0 else "")
+            cnpj = only_digits(dados[3] if len(dados) > 3 else "")
+            if cod_part:
+                cache["0150_cod_part"][cod_part] = {"cod_part": cod_part, "cnpj": cnpj}
+            if cnpj:
+                cache["0150_cnpj"][cnpj] = {"cod_part": cod_part, "cnpj": cnpj}
+
+        elif reg == "0190":
+            unid = str(dados[0] if len(dados) > 0 else "").strip().upper()
+            if unid:
+                cache["0190"].add(unid)
+
+        elif reg == "0200":
+            cod_item = str(dados[0] if len(dados) > 0 else "").strip()
+            if cod_item:
+                cache["0200"].add(cod_item)
+
+        elif reg == "0500":
+            cod_cta = str(dados[5] if len(dados) > 5 else "").strip()
+            if cod_cta:
+                cache["0500"].add(cod_cta)
+
+    print(
+        "[CACHE_MESTRES]",
+        {
+            "0150": len(cache["0150_cod_part"]),
+            "0190": len(cache["0190"]),
+            "0200": len(cache["0200"]),
+            "0500": len(cache["0500"]),
+        },
+        flush=True,
+    )
+
+    return cache

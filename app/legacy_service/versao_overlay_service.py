@@ -162,7 +162,17 @@ def carregar_linhas_logicas_com_revisoes_e_insert(
     versao_origem_id: int,
     versao_final_id: int | None = None,
 ) -> list[LinhaLogica]:
+    ###
+    import traceback
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        "[DEBUG OVERLAY CHAMADO] versao=%s",
+        versao_origem_id,
+    )
 
+    for linha in traceback.format_stack(limit=8):
+        logger.warning(linha.strip())
+    ##3
 
     regs = (
         db.query(EfdRegistro)

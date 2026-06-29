@@ -16,6 +16,10 @@ CSTS_EXCL_AZ_ISENT_SUSP = {"06", "07", "08", "09"}
 
 # CSTs tributados nao cumulativos (crédito)
 CSTS_TRIB_NCUM = {"50", "51", "52", "53", "54", "55", "56"}
+CSTS_CREDITAVEIS = {
+    "50", "51", "52", "53", "54", "55", "56",
+    "60", "61", "62", "63", "64", "65", "66", "67",
+}
 
 CSTS_NAO_CREDITAVEIS = frozenset({
     # monofásico / substituição / alíquota zero

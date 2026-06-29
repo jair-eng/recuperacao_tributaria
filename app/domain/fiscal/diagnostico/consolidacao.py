@@ -12,7 +12,6 @@ def _slug_valor(valor: Any) -> str:
     texto = texto.replace("-", "_").replace(".", "_")
     return texto.upper()
 
-
 def consolidar_apontamentos(
     apontamentos: list[dict[str, Any]],
     *,
@@ -20,18 +19,8 @@ def consolidar_apontamentos(
     campos_soma: list[str] | None = None,
     campo_itens: str = "itens",
 ) -> list[dict[str, Any]]:
-    """
-    Consolida apontamentos/diagnósticos por campos-chave.
-
-    Importante:
-    - Não substitui os apontamentos reais do banco.
-    - Gera itens consolidados apenas para exibição.
-    - Mantém os itens originais em `itens`.
-    - Cria um `id` sintético seguro para evitar erro de key no Streamlit.
-    """
 
     campos_soma = campos_soma or []
-
     grupos: dict[tuple, dict[str, Any]] = {}
 
     for apontamento in apontamentos:
@@ -55,8 +44,11 @@ def consolidar_apontamentos(
                     "item_fiscal_consolidado_id": None,
                     "qtd": 0,
                     "qtd_itens": 0,
+                    "qtd_pendente": 0,
+                    "qtd_resolvido": 0,
                     "ids_origem": [],
-                    "status": apontamento.get("status") or "Pendente",
+                    "status": "Pendente",
+                    "resolvido": False,
                     "tipo": apontamento.get("tipo"),
                     "prioridade": apontamento.get("prioridade"),
                     "descricao": apontamento.get("descricao"),
@@ -74,6 +66,18 @@ def consolidar_apontamentos(
         grupo["qtd"] += 1
         grupo["qtd_itens"] += 1
         grupo[campo_itens].append(apontamento)
+
+        is_resolvido = bool(apontamento.get("resolvido")) or (
+            str(apontamento.get("status") or "").lower() == "resolvido"
+        )
+
+        if is_resolvido:
+            grupo["qtd_resolvido"] += 1
+        else:
+            grupo["qtd_pendente"] += 1
+
+        grupo["resolvido"] = grupo["qtd_pendente"] == 0
+        grupo["status"] = "Resolvido" if grupo["resolvido"] else "Pendente"
 
         origem_id = apontamento.get("id")
         if origem_id is not None:

@@ -6,6 +6,7 @@ from app.Legacy.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_
 from app.Legacy.fiscal.settings_fiscais import CSTS_TRIB_NCUM
 from dataclasses import dataclass
 from app.sped.layouts.c170 import LAYOUT_C170
+from app.utils.numbers import fmt_aliq_sped
 
 _RE_CFOP = re.compile(r"^\d{4}$")
 _RE_CST = re.compile(r"^\d{2}$")
@@ -182,8 +183,8 @@ def patch_c170_campos(
         cst_pis = cst_pis or cst_pis_dom
         cst_cofins = cst_cofins or cst_cofins_dom
 
-    aliq_pis_calc = aliq_pis or "1,6500"
-    aliq_cofins_calc = aliq_cofins or "7,6000"
+    aliq_pis_calc = fmt_aliq_sped(aliq_pis or "1,6500")
+    aliq_cofins_calc = fmt_aliq_sped(aliq_cofins or "7,6000")
 
     aliq_pis_num = float(aliq_pis_calc.replace(",", "."))
     aliq_cofins_num = float(aliq_cofins_calc.replace(",", "."))

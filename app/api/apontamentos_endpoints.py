@@ -37,39 +37,55 @@ def reprocessar_apontamentos(
     payload: ReprocessarPayload = ReprocessarPayload(),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    versao = db.query(EfdVersao).filter(EfdVersao.id == versao_id).first()
-    print(
-        f"[REPROCESSAR_V2] iniciando reprocessamento de apontamentos | Versao={ versao}",
-        flush=True,
+
+    import time
+    t0 = time.perf_counter()
+
+    logger.info("## [REPROCESSAR v%s] INICIO ##", versao_id)
+
+    versao = (
+        db.query(EfdVersao)
+        .filter(EfdVersao.id == int(versao_id))
+        .first()
     )
 
     if not versao:
         raise HTTPException(status_code=404, detail="Versão não encontrada")
 
-    if versao.status == "EXPORTADA":
+    if str(versao.status).upper() == "EXPORTADA":
         raise HTTPException(
             status_code=400,
             detail="Versão EXPORTADA é congelada.",
         )
 
     try:
-        print("[DBG REPROCESSAR] antes preparar_revisao", flush=True)
-        resultado = preparar_revisao(
-            db=db,
-            versao_id=versao_id,
+        # encerra qualquer sujeira local antes do pipeline
+        db.rollback()
+
+        logger.info(
+            "## [REPROCESSAR v%s] antes preparar_revisao | status=%s | tempo=%.3fs ##",
+            versao_id,
+            versao.status,
+            time.perf_counter() - t0,
         )
 
+        resultado = preparar_revisao(
+            db=db,
+            versao_id=int(versao_id),
+        )
 
-        print(
-            "[DBG REPROCESSAR] depois preparar_revisao",
-            resultado,
-            flush=True,
+        db.commit()
+
+        logger.info(
+            "## [REPROCESSAR v%s] depois preparar_revisao | tempo=%.3fs ##",
+            versao_id,
+            time.perf_counter() - t0,
         )
 
         return {
             "ok": True,
-            "versao_id": versao_id,
-            "status": versao.status,
+            "versao_id": int(versao_id),
+            "status": str(versao.status),
             "message": "Reprocessamento concluído pelo pipeline novo.",
             "mensagens": [
                 "Mesa fiscal materializada.",
@@ -78,23 +94,18 @@ def reprocessar_apontamentos(
             "relatorio": resultado,
         }
 
-
     except Exception as e:
-
-        import traceback
-
-        print("[DBG REPROCESSAR][ERRO]", repr(e), flush=True)
-
-        traceback.print_exc()
-
         db.rollback()
 
+        logger.exception(
+            "## [REPROCESSAR v%s] ERRO | tempo=%.3fs ##",
+            versao_id,
+            time.perf_counter() - t0,
+        )
+
         raise HTTPException(
-
             status_code=500,
-
             detail=f"Erro ao reprocessar pelo pipeline novo: {e}",
-
         )
 
 @router.get(
@@ -232,6 +243,7 @@ def listar_apontamentos(
 
         itens: List[Dict[str, Any]] = []
         for a, r, tem_revisao, revisao_id, versao_revisada_id in rows:
+            meta = dict(a.meta_json or {})
             itens.append(
                 {
                     "id": int(a.id),
@@ -249,10 +261,13 @@ def listar_apontamentos(
                     "prioridade": getattr(a, "prioridade", None),
                     "resolvido": bool(a.resolvido) if a.resolvido is not None else False,
                     # ✅ expose meta completo pro front
-                    "meta": dict(a.meta_json or {}),
-                    "score": (a.meta_json or {}).get("score") if getattr(a, "meta_json", None) else None,
-                    "bucket": (a.meta_json or {}).get("bucket") if getattr(a, "meta_json", None) else None,
-                    "cenario": (a.meta_json or {}).get("cenario") if getattr(a, "meta_json", None) else None,
+                    "meta": meta,
+                    "score": meta.get("score"),
+                    "bucket": meta.get("bucket"),
+                    "cenario": meta.get("cenario") or meta.get("codigo_cenario"),
+                    "status_cruzamento": meta.get("status_cruzamento"),
+                    "tipo_corretiva_v2": meta.get("tipo_corretiva_v2") or meta.get("tipo_corretiva"),
+                    "tipo_normalizacao": meta.get("tipo_normalizacao"),
                     "registro": (
                         {"linha": int(r.linha), "reg": str(r.reg)}
                         if r is not None
@@ -268,6 +283,8 @@ def listar_apontamentos(
             campos_chave=[
                 "codigo",
                 "cenario",
+                "status_cruzamento",
+                "tipo_corretiva_v2",
             ],
             campos_soma=[
                 "impacto_financeiro",
