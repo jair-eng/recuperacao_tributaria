@@ -14,6 +14,7 @@ from app.sped.blocoM.m_utils import (
     _reg_of_line,
     _ensure_line,
 )
+from app.utils.normalizacao_utils import normalizar_c100_c170_exportado
 
 BLOCO9_REGS = {"9001", "9900", "9990", "9999"}
 
@@ -139,6 +140,9 @@ def gerar_sped(
 
     # 3.3.1) garante estrutura do bloco C
     linhas_finais = garantir_estrutura_bloco_c(linhas_finais)
+
+    # 3.3.1.1) normaliza C100/C170 após overlay/revisões
+    linhas_finais = normalizar_c100_c170_exportado(linhas_finais)
 
     linhas_finais = remover_0120_se_houver_movimento(linhas_finais)
     linhas_finais = recalcular_0990_bloco0(linhas_finais)

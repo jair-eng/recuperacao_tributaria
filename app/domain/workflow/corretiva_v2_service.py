@@ -277,7 +277,13 @@ def _aplicar_corretiva_match_patch_c170_v2(
             "tipo_corretiva": "PATCH_C170_EXISTENTE",
         }
 
-    enq = meta.get("enquadramento") or {}
+    meta_fiscal = meta.get("meta_fiscal") or {}
+
+    enq = (
+            meta_fiscal.get("enquadramento")
+            or meta.get("enquadramento")
+            or {}  )
+
     logger.info(
         "[MATCH_V2] enquadramento tipos | "
         "aliq_pis=%r tipo=%s | aliq_cofins=%r tipo=%s",
@@ -285,6 +291,25 @@ def _aplicar_corretiva_match_patch_c170_v2(
         type(enq.get("aliq_pis")).__name__,
         enq.get("aliq_cofins"),
         type(enq.get("aliq_cofins")).__name__,
+    )
+    codigo_cenario = (
+            meta_fiscal.get("codigo_cenario")
+            or meta.get("codigo_cenario")
+            or meta.get("cenario")
+    )
+
+    cod_cred = (
+            meta_fiscal.get("cod_cred")
+            or meta_fiscal.get("tipo_credito_codigo")
+            or enq.get("tipo_credito_codigo")
+            or enq.get("cod_cred")
+    )
+
+    nat_bc_cred = (
+            meta_fiscal.get("nat_bc_cred")
+            or meta_fiscal.get("base_credito_codigo")
+            or enq.get("base_credito_codigo")
+            or enq.get("nat_bc_cred")
     )
 
     alteracao = {
@@ -337,6 +362,26 @@ def _aplicar_corretiva_match_patch_c170_v2(
             or meta.get("vl_cofins_sugerido")
             or ""
         ),
+        "meta_fiscal": {
+            **meta_fiscal,
+            "codigo_cenario": codigo_cenario,
+            "cenario": codigo_cenario,
+            "enquadramento": enq,
+            "cod_cred": cod_cred,
+            "tipo_credito_codigo": cod_cred,
+            "nat_bc_cred": nat_bc_cred,
+            "base_credito_codigo": nat_bc_cred,
+            "cod_base_credito": nat_bc_cred,
+            "contexto_credito": codigo_cenario,
+            "natureza_credito_m": nat_bc_cred,
+        },
+        "codigo_cenario": codigo_cenario,
+        "contexto": codigo_cenario,
+        "cod_cred": cod_cred,
+        "nat_bc_cred": nat_bc_cred,
+        "natureza_credito_m": nat_bc_cred,
+        "dominio": meta.get("dominio"),
+
     }
 
     res = revisar_c170_lote(

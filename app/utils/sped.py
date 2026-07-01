@@ -3,9 +3,10 @@ from pathlib import Path
 
 from app.icms_ipi.icms_0150_agregador import _fmt_campo
 from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
-from app.utils.strings import only_digits, s
-from typing import Any, Dict
+from app.utils.strings import only_digits
 from sqlalchemy.orm import Session
+from decimal import Decimal
+from typing import Any
 
 def split_linha_sped(linha: str) -> list[str]:
     return str(linha or "").strip().strip("|").split("|")
@@ -28,6 +29,19 @@ def reg_linha_sped(linha: str) -> str:
         return partes[1].strip()
     return ""
 
+def dec_sped_safe(raw: object) -> Decimal:
+    s = str(raw or "").strip()
+    if not s:
+        return Decimal("0")
+    s = s.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(s)
+    except Exception:
+        return Decimal("0")
+
+
+def join_sped_line(reg: str, dados: list[Any]) -> str:
+    return "|" + "|".join([str(reg)] + ["" if x is None else str(x) for x in dados]) + "|"
 
 def extrair_dados_sped(reg: Any) -> list[Any]:
     if hasattr(reg, "dados"):

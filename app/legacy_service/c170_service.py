@@ -33,6 +33,9 @@ def revisar_c170(
     aliq_pis: Optional[str] = None,
     aliq_cofins: Optional[str] = None,
     natureza_credito_m: Optional[str] = None,
+    meta_fiscal: Optional[Dict[str, Any]] = None,
+    cod_cred: Optional[str] = None,
+    nat_bc_cred: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Realiza a revisão de um registro C170 (CNPJ já validado no chamador).
@@ -100,14 +103,52 @@ def revisar_c170(
     linha_nova = formatar_linha("C170", novos_campos).strip()
     linha_nova = _validar_linha_c170(linha_nova)
 
+    meta_fiscal_final = dict(meta_fiscal or {})
+
+    codigo_cenario = (
+            meta_fiscal_final.get("codigo_cenario")
+            or meta_fiscal_final.get("cenario")
+            or contexto
+    )
+
+    enquadramento_final = meta_fiscal_final.get("enquadramento") or {}
+
+    cod_cred_final = (
+            meta_fiscal_final.get("cod_cred")
+            or meta_fiscal_final.get("tipo_credito_codigo")
+            or cod_cred
+            or enquadramento_final.get("tipo_credito_codigo")
+            or enquadramento_final.get("cod_cred")
+    )
+
+    nat_bc_cred_final = (
+            meta_fiscal_final.get("nat_bc_cred")
+            or meta_fiscal_final.get("base_credito_codigo")
+            or nat_bc_cred
+            or natureza_credito_m
+            or enquadramento_final.get("base_credito_codigo")
+            or enquadramento_final.get("nat_bc_cred")
+    )
+
+    meta_fiscal_final.update({
+        "codigo_cenario": codigo_cenario,
+        "cenario": codigo_cenario,
+        "enquadramento": enquadramento_final,
+        "cod_cred": cod_cred_final,
+        "tipo_credito_codigo": cod_cred_final,
+        "nat_bc_cred": nat_bc_cred_final,
+        "base_credito_codigo": nat_bc_cred_final,
+        "cod_base_credito": nat_bc_cred_final,
+        "contexto_credito": codigo_cenario,
+        "natureza_credito_m": nat_bc_cred_final,
+    })
+
     payload_rev = {
         "linha_referencia": int(getattr(r, "linha", 0)),
         "linha_nova": linha_nova,
         "meta": {
-            "contexto_credito": contexto,
-            "tipo_credito": motivo_codigo,
-            "cod_base_credito": natureza_credito_m,
-            "natureza_credito_m": natureza_credito_m,
+            **meta_fiscal_final,
+            "tipo_apontamento": motivo_codigo,
             "cst_pis": cst_pis,
             "cst_cofins": cst_cofins,
             "dominio": dominio,
@@ -292,6 +333,9 @@ def revisar_c170_lote(
                 aliq_pis=item.get("aliq_pis"),
                 aliq_cofins=item.get("aliq_cofins"),
                 natureza_credito_m=item.get("natureza_credito_m"),
+                meta_fiscal=item.get("meta_fiscal"),
+                cod_cred=item.get("cod_cred"),
+                nat_bc_cred=item.get("nat_bc_cred"),
             )
 
             resultados.append(res)

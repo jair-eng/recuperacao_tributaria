@@ -25,7 +25,8 @@ from app.sped.bloco_1.builder import (
 )
 from app.db.models import EfdVersao, EfdArquivo, EfdRegistro
 from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
-from app.sped.blocoM.m_utils import caminho_sped_corrigido, nome_sped_corrigido, _cst_norm, carregar_ajustes_m, map_nat_bc_cred_por_cfop
+from app.sped.blocoM.m_utils import caminho_sped_corrigido, nome_sped_corrigido, _cst_norm, carregar_ajustes_m, \
+    _clean_sped_line, _reg_of_line, extrair_cods_cred_bloco_m, map_nat_por_cst_do_m_original
 from app.sped.parser import parse_sped_from_lines
 from app.sped.utils_hierarquia import resolver_ind_oper_c100_com_fallback
 from app.sped.writer import gerar_sped
@@ -125,8 +126,7 @@ def exportar_sped(
 
         # 3) soma C170 por CST (layout-driven) - já com overlay aplicado - separando o Natureza op
         base_por_nat_cst: Dict[str, Dict[str, Decimal]] = {}
-        base_por_nat_cst_delta_201: Dict[str, Dict[str, Decimal]] = {}
-        base_por_nat_cst_delta_206: Dict[str, Dict[str, Decimal]] = {}
+        base_delta_por_cod_cred_nat_cst: Dict[str, Dict[str, Dict[str, Decimal]]] = {}
         qtd_itens_delta = 0
         qtd_itens = 0
         qtd_pf = 0
@@ -136,23 +136,20 @@ def exportar_sped(
         dbg_nao_entrada = 0
         dbg_sem_pai = 0
 
+        conteudo_linhas = [
+            obter_conteudo_final(l) or ""
+            for l in linhas
+        ]
 
-        # helper inline (sem criar função global): tenta achar IND_OPER do C100 pai
-        def _ind_oper_pai_c100(_rid: int) -> str:
-            try:
-                r170 = db.get(EfdRegistro, int(_rid))
-                if not r170 or not getattr(r170, "pai_id", None):
-                    return ""
-                r100 = db.get(EfdRegistro, int(r170.pai_id))
-                if not r100 or getattr(r100, "reg", "") != "C100":
-                    return ""
-                cj = getattr(r100, "conteudo_json", None) or {}
-                dados100 = cj.get("dados") if isinstance(cj, dict) else None
-                if not isinstance(dados100, list) or len(dados100) < 1:
-                    return ""
-                return str(dados100[0] or "").strip()  # "0" entrada / "1" saída
-            except Exception:
-                return ""
+        linhas_m_originais = [
+            ln
+            for ln in conteudo_linhas
+            if (ln or "").lstrip().startswith("|M")
+        ]
+
+        nat_por_cst_m_original = map_nat_por_cst_do_m_original(
+            linhas_m_originais
+        )
 
         for ln in linhas:
             conteudo = obter_conteudo_final(ln) or ""
@@ -210,34 +207,35 @@ def exportar_sped(
             except Exception:
                 cfop = ""
 
-            # 1) Barra CFOP fora do escopo do dominio
-            if cfop and  not _cfop_elegivel_por_dominio(cfop, dominio=dominio_export):
-                dbg_cfop_fora += 1
-                logger.debug(
-                    "BASE_SKIP_CFOP | dominio=%s cfop=%s rid=%s cst=%s vl_item=%s",
-                    dominio_export,
-                    cfop,
-                    rid_int or "?",
-                    cst_pis,
-                    vl_item,
-                )
-                continue
-            # NAT_BC_CRED por CFOP
-            nat = map_nat_bc_cred_por_cfop(cfop)
 
+            # NAT_BC_CRED fallback
             meta_ln = getattr(ln, "meta", None) or {}
             rev_json = getattr(ln, "revisao_json", None) or {}
 
-            cod_base_meta = None
+            meta_rev = {}
+            if isinstance(rev_json, dict):
+                meta_rev = rev_json.get("meta") if isinstance(rev_json.get("meta"), dict) else {}
 
-            if isinstance(meta_ln, dict):
-                cod_base_meta = (
-                        meta_ln.get("cod_base_credito")
-                        or meta_ln.get("natureza_credito_m")
-                )
+            revisao_id = int(getattr(ln, "revisao_id", 0) or 0)
 
-            if cod_base_meta:
-                nat = str(cod_base_meta).strip()
+            nat = str(
+                (meta_ln.get("nat_bc_cred") if isinstance(meta_ln, dict) else None)
+                or (meta_ln.get("base_credito_codigo") if isinstance(meta_ln, dict) else None)
+                or (meta_ln.get("cod_base_credito") if isinstance(meta_ln, dict) else None)
+                or (meta_ln.get("natureza_credito_m") if isinstance(meta_ln, dict) else None)
+                or meta_rev.get("nat_bc_cred")
+                or meta_rev.get("base_credito_codigo")
+                or meta_rev.get("cod_base_credito")
+                or meta_rev.get("natureza_credito_m")
+                or ""
+            ).strip()
+
+            if not nat:
+                if revisao_id > 0:
+                    raise RuntimeError(
+                        f"DELTA sem nat/base_credito | rid={rid_int} cfop={cfop}"
+                    )
+                nat = nat_por_cst_m_original.get(cst_pis, "")
 
             # 2) Só ENTRADAS (IND_OPER do C100 pai == "0")
             ind_oper = resolver_ind_oper_c100_com_fallback(
@@ -285,50 +283,51 @@ def exportar_sped(
             # DELTA: somente linhas criadas/alteradas pelo motor
             # --------------------------------------------------
             revisao_id = int(getattr(ln, "revisao_id", 0) or 0)
-            meta_ln = getattr(ln, "meta", None) or {}
-            rev_json = getattr(ln, "revisao_json", None) or {}
-
 
             eh_delta_motor = revisao_id > 0
 
             # opcional/conservador: exige meta ou contexto
             if eh_delta_motor:
-                contexto = ""
-                if isinstance(meta_ln, dict):
-                    contexto = str(
-                        meta_ln.get("contexto_credito")
-                        or meta_ln.get("tipo_credito")
-                        or ""
-                    ).strip().upper()
+                meta_rev = {}
+                if isinstance(rev_json, dict):
+                    meta_rev = rev_json.get("meta") if isinstance(rev_json.get("meta"), dict) else {}
 
-                if not contexto and isinstance(rev_json, dict):
-                    contexto = str(
-                        rev_json.get("contexto")
-                        or ((rev_json.get("meta") or {}).get("contexto_credito") if isinstance(rev_json.get("meta"),
-                                                                                               dict) else "")
-                        or ""
-                    ).strip().upper()
+                cod_cred_delta = str(
+                    (meta_ln.get("cod_cred") if isinstance(meta_ln, dict) else None)
+                    or (meta_ln.get("tipo_credito_codigo") if isinstance(meta_ln, dict) else None)
+                    or meta_rev.get("cod_cred")
+                    or meta_rev.get("tipo_credito_codigo")
+                    or ""
+                ).strip()
 
-                eh_lc192 = contexto in {"LC192", "COMB_LC192", "COMBUSTIVEL_LC192"}
+                nat_delta = str(
+                    (meta_ln.get("nat_bc_cred") if isinstance(meta_ln, dict) else None)
+                    or (meta_ln.get("base_credito_codigo") if isinstance(meta_ln, dict) else None)
+                    or (meta_ln.get("cod_base_credito") if isinstance(meta_ln, dict) else None)
+                    or meta_rev.get("nat_bc_cred")
+                    or meta_rev.get("base_credito_codigo")
+                    or meta_rev.get("cod_base_credito")
+                    or meta_rev.get("natureza_credito_m")
+                    or nat
+                ).strip()
 
-                if eh_lc192:
-                    nat_delta = "01"
-
-                    base_por_nat_cst_delta_206.setdefault(nat_delta, {})
-                    base_por_nat_cst_delta_206[nat_delta][cst_pis] = (
-                            base_por_nat_cst_delta_206[nat_delta].get(cst_pis, Decimal("0.00"))
-                            + base_liquida
+                if not cod_cred_delta:
+                    raise RuntimeError(
+                        f"DELTA sem cod Credito!"
                     )
-                else:
+
+                if not nat_delta:
                     nat_delta = nat
 
-                    base_por_nat_cst_delta_201.setdefault(nat_delta, {})
-                    base_por_nat_cst_delta_201[nat_delta][cst_pis] = (
-                            base_por_nat_cst_delta_201[nat_delta].get(cst_pis, Decimal("0.00"))
-                            + base_liquida
-                    )
+                base_delta_por_cod_cred_nat_cst.setdefault(cod_cred_delta, {})
+                base_delta_por_cod_cred_nat_cst[cod_cred_delta].setdefault(nat_delta, {})
+                base_delta_por_cod_cred_nat_cst[cod_cred_delta][nat_delta][cst_pis] = (
+                        base_delta_por_cod_cred_nat_cst[cod_cred_delta][nat_delta].get(cst_pis, Decimal("0.00"))
+                        + base_liquida
+                )
+
                 qtd_itens_delta += 1
-            qtd_itens += 1
+
 
         base_total = sum(
             (base for mapa_cst in base_por_nat_cst.values() for base in mapa_cst.values()),
@@ -347,8 +346,6 @@ def exportar_sped(
         relatorio_exportacao["credito_pis"] = str(credito_pis)
         relatorio_exportacao["credito_cofins"] = str(credito_cofins)
         relatorio_exportacao["credito_total"] = str(credito_total_calc)
-
-        valor_utilizado_mes_dec = Decimal(str(valor_utilizado_mes or 0)).quantize(Decimal("0.01"))
 
         logger.info(
             "EXPORT resumo base | versao_id=%s base_total=%s pis=%s cofins=%s cred_total=%s c170_creditaveis=%s pf_bloqueados=%s cfop_fora=%s nao_entrada=%s sem_pai=%s",
@@ -457,7 +454,7 @@ def exportar_sped(
         if override_base is not None and not tem_ajuste_export:
             relatorio_exportacao["override_base_por_cst"] = True
             logger.info("BASE_POR_CST | usando override do banco")
-            base_por_cst = override_base
+
         elif override_base is not None and tem_ajuste_export:
             logger.info("BASE_POR_CST | override ignorado por exportação via AJUSTE_M")
 
@@ -500,25 +497,20 @@ def exportar_sped(
                         )
             except Exception:
                 logger.exception("BLOCO_M_RESUMO | erro ao calcular resumo")
-            tem_delta = bool(base_por_nat_cst_delta_201 or base_por_nat_cst_delta_206)
+            tem_delta = bool(base_delta_por_cod_cred_nat_cst)
 
             if m_original_tem_valor and tem_delta:
                 logger.info("BLOCO M | preservando original e inserindo créditos delta")
 
                 linhas_append = []
 
-                if base_por_nat_cst_delta_201:
+                for cod_cred_delta, base_por_nat_cst_delta in sorted(
+                        base_delta_por_cod_cred_nat_cst.items()
+                ):
                     linhas_append.extend(
                         gerar_linhas_m_credito_append(
-                            base_por_nat_cst_delta_201,
-                            cod_cred="201",
-                        )
-                    )
-                if base_por_nat_cst_delta_206:
-                    linhas_append.extend(
-                        gerar_linhas_m_credito_append(
-                            base_por_nat_cst_delta_206,
-                            cod_cred="206",
+                            base_por_nat_cst_delta,
+                            cod_cred=str(cod_cred_delta),
                         )
                     )
                 bloco_m_override = inserir_creditos_no_bloco_m_original(
@@ -528,13 +520,44 @@ def exportar_sped(
             else:
                 logger.info("BLOCO M | M inexistente/zerado, gerando pelo motor v3")
 
-                bloco_m_override = construir_bloco_m_v3(
-                    linhas_sped=conteudo_sem_m,
-                    parsed=parsed,
-                    base_por_nat_cst=base_por_nat_cst,
-                    cod_cred="201",
-                    ajustes_m=ajustes_m,
-                )
+                if base_delta_por_cod_cred_nat_cst:
+                    blocos_m_por_cod: list[str] = []
+
+                    for cod_cred_delta, base_por_nat_cst_delta in sorted(
+                            base_delta_por_cod_cred_nat_cst.items()
+                    ):
+                        bloco_tmp = construir_bloco_m_v3(
+                            linhas_sped=conteudo_sem_m,
+                            parsed=parsed,
+                            base_por_nat_cst=base_por_nat_cst_delta,
+                            cod_cred=str(cod_cred_delta),
+                            ajustes_m=ajustes_m,
+                        )
+
+                        for ln in bloco_tmp:
+                            ln = _clean_sped_line(ln)
+                            if not ln:
+                                continue
+
+                            reg = _reg_of_line(ln)
+
+                            # mantém só o corpo M; M001/M990 serão recompostos no final
+                            if reg in {"M001", "M990"}:
+                                continue
+
+                            blocos_m_por_cod.append(ln)
+
+                    bloco_m_override = ["|M001|0|"]
+                    bloco_m_override.extend(list(dict.fromkeys(blocos_m_por_cod)))
+                    bloco_m_override.append(f"|M990|{len(bloco_m_override) + 1}|")
+
+                if not base_delta_por_cod_cred_nat_cst:
+                    logger.info(
+                        "Nenhum delta fiscal encontrado. "
+                        "Mantendo bloco M original." )
+
+                    bloco_m_override = linhas_m_originais
+
             credito_total_1100 = extrair_credito_total_do_bloco_m(bloco_m_override)
 
         # 7) Bloco 1 (1100/1500)
@@ -544,7 +567,17 @@ def exportar_sped(
 
         periodo_atual_mmaaaa = yyyymm_to_mmyyyy(str(periodo_atual))
 
-        cods_cont = ["201", "206"]
+        cods_cont = sorted(
+            {
+                str(cod or "").strip()
+                for cod in base_delta_por_cod_cred_nat_cst.keys()
+                if str(cod or "").strip()
+            }
+        )
+
+        if not cods_cont:
+            cods_cont = sorted(extrair_cods_cred_bloco_m(bloco_m_override))
+
         bloco_1_linhas: list[str] = []
 
         for cod_cont in cods_cont:

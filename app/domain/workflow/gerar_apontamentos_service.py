@@ -177,6 +177,32 @@ def gerar_apontamentos_por_contexto(
 
         meta_diag = diag.get("meta") or {}
 
+        codigo_cenario = (
+                cenario.get("codigo")
+                or cenario.get("codigo_cenario")
+                or cenario.get("cenario")
+                or meta_diag.get("codigo_cenario")
+                or meta_diag.get("cenario")
+        )
+
+        enquadramento_diag = (
+                meta_diag.get("enquadramento")
+                or cenario.get("enquadramento")
+                or {}
+        )
+
+        cod_cred = (
+                enquadramento_diag.get("tipo_credito_codigo")
+                or enquadramento_diag.get("cod_cred")
+                or enquadramento_diag.get("tipo_credito")
+        )
+
+        nat_bc_cred = (
+                enquadramento_diag.get("base_credito_codigo")
+                or enquadramento_diag.get("nat_bc_cred")
+                or enquadramento_diag.get("cod_base_credito")
+        )
+
         registro_id = (
             meta_diag.get("registro_id_c170")
             or meta_diag.get("registro_id_c100")
@@ -256,6 +282,18 @@ def gerar_apontamentos_por_contexto(
         stats[f"tipo_corretiva:{tipo_corretiva_v2}"] += 1
         stats[f"status:{status_cruzamento}"] += 1
 
+        meta_fiscal = {
+            "codigo_cenario": codigo_cenario,
+            "cenario": codigo_cenario,
+            "enquadramento": enquadramento_diag,
+            "cod_cred": cod_cred,
+            "tipo_credito_codigo": cod_cred,
+            "nat_bc_cred": nat_bc_cred,
+            "base_credito_codigo": nat_bc_cred,
+            "cod_base_credito": nat_bc_cred,
+            "contexto_credito": codigo_cenario,
+            "natureza_credito_m": nat_bc_cred,
+        }
         novos_apontamentos.append(
             EfdApontamento(
                 versao_id=int(versao_id),
@@ -268,6 +306,8 @@ def gerar_apontamentos_por_contexto(
                 prioridade=diag.get("prioridade"),
                 meta_json=json_safe({
                     **meta_diag,
+                    **meta_fiscal,
+                    "meta_fiscal": meta_fiscal,
                     "item_fiscal_consolidado_id": item_fiscal_consolidado_id,
                     "registro_id": registro_id,
                     "origem": meta_diag.get("origem") or "CONTEXTO_FISCAL",
@@ -278,7 +318,6 @@ def gerar_apontamentos_por_contexto(
                     # compatível com endpoint/front
                     "score": score_result.score,
                     "bucket": score_result.confianca,
-                    "cenario": meta_diag.get("codigo_cenario"),
 
                     "status_cruzamento": status_cruzamento,
                     "tipo_corretiva_v2": tipo_corretiva_v2,

@@ -24,16 +24,7 @@ CENARIOS_FISCAIS = [
 def avaliar_cenarios(meta, classificacao):
     for fn in CENARIOS_FISCAIS:
         nome = getattr(fn, "__name__", str(fn))
-        logger.warning(
-            "## [DEBUG_TEMP_AVALIAR_CENARIOS_IN] dominio=%s status=%s tipo_norm=%s cfop=%s ncm=%s produto=%s operacao=%s ##",
-            meta.get("dominio"),
-            meta.get("status_cruzamento"),
-            meta.get("tipo_normalizacao"),
-            meta.get("cfop"),
-            meta.get("ncm"),
-            (classificacao or {}).get("produto"),
-            (classificacao or {}).get("operacao"),
-        )
+
         try:
             cenario = fn(meta, classificacao)
 

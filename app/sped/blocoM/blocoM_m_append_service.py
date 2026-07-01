@@ -4,7 +4,8 @@ from decimal import Decimal
 from typing import Dict, List
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
 from app.Legacy.fiscal.constants import REGS_M_RELEVANTES
-from app.sped.blocoM.m_utils import _clean_sped_line, _reg_of_line, _fmt_br, _q2, sanitizar_bloco_m
+from app.sped.blocoM.m_utils import _clean_sped_line, _reg_of_line, _fmt_br, _q2, sanitizar_bloco_m, _split_m, \
+    _somar_campo, _join_m, _dec_m
 
 
 def bloco_m_tem_valor_relevante(linhas_m: List[str]) -> bool:
@@ -40,20 +41,15 @@ def bloco_m_tem_valor_relevante(linhas_m: List[str]) -> bool:
 def gerar_linhas_m_credito_append(
     base_por_nat_cst: Dict[str, Dict[str, Decimal]],
     *,
-    cod_cred: str = "201",
+    cod_cred: str,
 ) -> List[str]:
-    """
-    Gera somente linhas novas de crédito:
-    M100/M105 para PIS
-    M500/M505 para COFINS
 
-    Padrão compatível com construir_bloco_m_v3:
-      M100/M500 usam cod_cred
-      M105/M505 usam nat/cst
+    cod_cred = str(cod_cred or "").strip()
 
-    Não gera M001/M990.
-    Não mexe em M200/M600.
-    """
+    if not cod_cred:
+        raise ValueError(
+            "cod_cred obrigatório. O valor deve vir do enquadramento fiscal da V2."
+        )
     linhas: List[str] = []
 
     for nat, por_cst in sorted((base_por_nat_cst or {}).items()):
@@ -89,10 +85,13 @@ def inserir_creditos_no_bloco_m_original(
     linhas_append: List[str],
 ) -> List[str]:
     """
-    Preserva Bloco M original e insere:
-      - M100/M105 novos antes do primeiro M200
-      - M500/M505 novos antes do primeiro M600
-    Recalcula M990.
+    Preserva Bloco M original e mescla créditos delta.
+
+    Regra:
+      - Se já existir M100/M500 com mesmo COD_CRED, soma bases/créditos.
+      - Se já existir M105/M505 com mesma NAT+CST, soma bases.
+      - Só insere linhas novas quando a chave ainda não existe.
+      - Recalcula M990.
     """
     if not linhas_m_originais:
         return sanitizar_bloco_m(linhas_append)
@@ -100,37 +99,231 @@ def inserir_creditos_no_bloco_m_original(
     linhas_m = [_clean_sped_line(x) for x in linhas_m_originais if _clean_sped_line(x)]
     linhas_append = [_clean_sped_line(x) for x in linhas_append if _clean_sped_line(x)]
 
-    append_pis = [x for x in linhas_append if _reg_of_line(x) in {"M100", "M105"}]
-    append_cofins = [x for x in linhas_append if _reg_of_line(x) in {"M500", "M505"}]
+    # -----------------------------
+    # 1) Indexa deltas do append
+    # -----------------------------
+    delta_m100: Dict[str, Dict[str, Decimal]] = {}
+    delta_m500: Dict[str, Dict[str, Decimal]] = {}
+    delta_m105: Dict[tuple[str, str], Decimal] = {}
+    delta_m505: Dict[tuple[str, str], Decimal] = {}
 
+    linhas_append_restantes: List[str] = []
+
+    for ln in linhas_append:
+        reg, dados = _split_m(ln)
+
+        if reg == "M100":
+            cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
+            base = _dec_m(dados[2] if len(dados) > 2 else "0")
+            cred = _dec_m(dados[6] if len(dados) > 6 else "0")
+
+            if cod_cred:
+                delta_m100.setdefault(cod_cred, {"base": Decimal("0.00"), "cred": Decimal("0.00")})
+                delta_m100[cod_cred]["base"] += base
+                delta_m100[cod_cred]["cred"] += cred
+            else:
+                linhas_append_restantes.append(ln)
+
+        elif reg == "M500":
+            cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
+            base = _dec_m(dados[2] if len(dados) > 2 else "0")
+            cred = _dec_m(dados[6] if len(dados) > 6 else "0")
+
+            if cod_cred:
+                delta_m500.setdefault(cod_cred, {"base": Decimal("0.00"), "cred": Decimal("0.00")})
+                delta_m500[cod_cred]["base"] += base
+                delta_m500[cod_cred]["cred"] += cred
+            else:
+                linhas_append_restantes.append(ln)
+
+        elif reg == "M105":
+            nat = str(dados[0] if len(dados) > 0 else "").strip()
+            cst = str(dados[1] if len(dados) > 1 else "").strip()
+            base = _dec_m(dados[2] if len(dados) > 2 else "0")
+
+            if nat and cst:
+                delta_m105[(nat, cst)] = delta_m105.get((nat, cst), Decimal("0.00")) + base
+            else:
+                linhas_append_restantes.append(ln)
+
+        elif reg == "M505":
+            nat = str(dados[0] if len(dados) > 0 else "").strip()
+            cst = str(dados[1] if len(dados) > 1 else "").strip()
+            base = _dec_m(dados[2] if len(dados) > 2 else "0")
+
+            if nat and cst:
+                delta_m505[(nat, cst)] = delta_m505.get((nat, cst), Decimal("0.00")) + base
+            else:
+                linhas_append_restantes.append(ln)
+
+        else:
+            linhas_append_restantes.append(ln)
+
+    # -----------------------------
+    # 2) Mescla nas linhas originais
+    # -----------------------------
     out: List[str] = []
-    inseriu_pis = False
-    inseriu_cofins = False
+    encontrou_m100: set[str] = set()
+    encontrou_m500: set[str] = set()
+    encontrou_m105: set[tuple[str, str]] = set()
+    encontrou_m505: set[tuple[str, str]] = set()
 
     for ln in linhas_m:
-        reg = _reg_of_line(ln)
+        reg, dados = _split_m(ln)
 
         if reg == "M990":
             continue
 
-        if reg == "M200" and not inseriu_pis:
-            out.extend(append_pis)
-            inseriu_pis = True
+        if reg == "M100":
+            cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
+            delta = delta_m100.get(cod_cred)
 
-        if reg == "M600" and not inseriu_cofins:
-            out.extend(append_cofins)
-            inseriu_cofins = True
+            if delta:
+                base = _q2(delta["base"])
+                cred = _q2(delta["cred"])
+
+                # M100:
+                # 2 VL_BC_PIS
+                # 6 VL_CRED
+                # 10 VL_CRED_DISP
+                # 13 SL_CRED
+                _somar_campo(dados, 2, base)
+                _somar_campo(dados, 6, cred)
+                _somar_campo(dados, 10, cred)
+                _somar_campo(dados, 13, cred)
+
+                encontrou_m100.add(cod_cred)
+                ln = _join_m("M100", dados)
+
+        elif reg == "M500":
+            cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
+            delta = delta_m500.get(cod_cred)
+
+            if delta:
+                base = _q2(delta["base"])
+                cred = _q2(delta["cred"])
+
+                # M500:
+                # 2 VL_BC_COFINS
+                # 6 VL_CRED
+                # 10 VL_CRED_DISP
+                # 13 SL_CRED
+                _somar_campo(dados, 2, base)
+                _somar_campo(dados, 6, cred)
+                _somar_campo(dados, 10, cred)
+                _somar_campo(dados, 13, cred)
+
+                encontrou_m500.add(cod_cred)
+                ln = _join_m("M500", dados)
+
+        elif reg == "M105":
+            nat = str(dados[0] if len(dados) > 0 else "").strip()
+            cst = str(dados[1] if len(dados) > 1 else "").strip()
+            key = (nat, cst)
+            delta = delta_m105.get(key)
+
+            if delta:
+                base = _q2(delta)
+
+                # M105:
+                # 2 VL_BC_PIS_TOT
+                # 4 VL_BC_PIS_NC
+                # 5 VL_BC_PIS
+                _somar_campo(dados, 2, base)
+                _somar_campo(dados, 4, base)
+                _somar_campo(dados, 5, base)
+
+                encontrou_m105.add(key)
+                ln = _join_m("M105", dados)
+
+        elif reg == "M505":
+            nat = str(dados[0] if len(dados) > 0 else "").strip()
+            cst = str(dados[1] if len(dados) > 1 else "").strip()
+            key = (nat, cst)
+            delta = delta_m505.get(key)
+
+            if delta:
+                base = _q2(delta)
+
+                # M505:
+                # 2 VL_BC_COFINS_TOT
+                # 4 VL_BC_COFINS_NC
+                # 5 VL_BC_COFINS
+                _somar_campo(dados, 2, base)
+                _somar_campo(dados, 4, base)
+                _somar_campo(dados, 5, base)
+
+                encontrou_m505.add(key)
+                ln = _join_m("M505", dados)
 
         out.append(ln)
 
-    if not inseriu_pis:
-        out.extend(append_pis)
+    # -----------------------------
+    # 3) Insere apenas o que não encontrou
+    # -----------------------------
+    append_pis: List[str] = []
+    append_cofins: List[str] = []
 
-    if not inseriu_cofins:
-        out.extend(append_cofins)
+    for ln in linhas_append:
+        reg, dados = _split_m(ln)
 
-    if not out or not out[0].startswith("|M001|"):
-        out.insert(0, "|M001|0|")
+        if reg == "M100":
+            cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
+            if cod_cred and cod_cred not in encontrou_m100:
+                append_pis.append(ln)
 
-    out.append(f"|M990|{len(out) + 1}|")
-    return out
+        elif reg == "M105":
+            nat = str(dados[0] if len(dados) > 0 else "").strip()
+            cst = str(dados[1] if len(dados) > 1 else "").strip()
+            if (nat, cst) not in encontrou_m105:
+                append_pis.append(ln)
+
+        elif reg == "M500":
+            cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
+            if cod_cred and cod_cred not in encontrou_m500:
+                append_cofins.append(ln)
+
+        elif reg == "M505":
+            nat = str(dados[0] if len(dados) > 0 else "").strip()
+            cst = str(dados[1] if len(dados) > 1 else "").strip()
+            if (nat, cst) not in encontrou_m505:
+                append_cofins.append(ln)
+
+        else:
+            linhas_append_restantes.append(ln)
+
+    # evita duplicidade exata
+    append_pis = list(dict.fromkeys(append_pis))
+    append_cofins = list(dict.fromkeys(append_cofins))
+
+    # -----------------------------
+    # 4) Se precisou criar chave nova, insere nos pontos corretos
+    # -----------------------------
+    final: List[str] = []
+    inseriu_pis = False
+    inseriu_cofins = False
+
+    for ln in out:
+        reg = _reg_of_line(ln)
+
+        if reg == "M200" and append_pis and not inseriu_pis:
+            final.extend(append_pis)
+            inseriu_pis = True
+
+        if reg == "M600" and append_cofins and not inseriu_cofins:
+            final.extend(append_cofins)
+            inseriu_cofins = True
+
+        final.append(ln)
+
+    if append_pis and not inseriu_pis:
+        final.extend(append_pis)
+
+    if append_cofins and not inseriu_cofins:
+        final.extend(append_cofins)
+
+    if not final or not final[0].startswith("|M001|"):
+        final.insert(0, "|M001|0|")
+
+    final.append(f"|M990|{len(final) + 1}|")
+    return final

@@ -13,13 +13,6 @@ class ReceitaKey:
     cst: str
     conta: str  # pode ser vazia, mas preferimos manter
 
-def extrair_receitas_cst(parsed: List[Dict[str, Any]], *, preferir_c190: bool=True) -> Dict[Tuple[str,str], Decimal]:
-    if preferir_c190:
-        rec = extrair_receitas_c190(parsed)
-        if rec:
-            return rec
-    return extrair_receitas_c170(parsed)
-
 
 
 def extrair_receitas_c190(parsed: List[Dict[str, Any]]) -> Dict[Tuple[str, str], Decimal]:

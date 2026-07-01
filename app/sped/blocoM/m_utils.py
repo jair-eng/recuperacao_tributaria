@@ -12,8 +12,6 @@ from typing import List, Dict, Tuple, Optional
 def _q2(v: Decimal) -> Decimal:
     return v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-def _trunc_2(v: Decimal) -> Decimal:
-    return (v * 100).to_integral_value(rounding="ROUND_DOWN") / Decimal("100")
 
 def _key(reg_line: str):
     reg = _reg_of(reg_line)  # "M500"
@@ -88,39 +86,6 @@ def _clean_sped_line(linha: str) -> str:
         s += "|"
     return s
 
-def _rank_m(reg: str) -> int:
-    # Ordem mínima segura (estável). Expanda depois.
-    ordem = [
-        "M001",
-        "M100", "M105", "M110", "M115", "M200", "M205", "M210", "M211", "M220", "M230",
-        "M300", "M350", "M400", "M410",
-        "M500", "M505", "M510", "M515", "M600", "M605", "M610", "M611", "M620", "M630",
-        "M700", "M800", "M810",
-        "M990",
-    ]
-    idx = {r: i for i, r in enumerate(ordem)}
-    return idx.get(reg, 999)
-
-
-def _pick_existing_m_lines(linhas_sped: List[str]) -> Tuple[List[str], List[str]]:
-    """
-    Separa:
-      - corpo_m: linhas M* exceto M001/M990/M100/M200/M210/M500/M600/M610 (que vamos reconstruir)
-      - outras_m: (não usado aqui)
-    Mantém M400/M410/M800/M810 etc.
-    """
-    manter = []
-    for l in linhas_sped:
-        if not l or not l.startswith("|M"):
-            continue
-        if l.startswith("|M001|") or l.startswith("|M990|"):
-            continue
-        reg = _reg_of(l)
-        # estes vamos gerar de novo
-        if reg in {"M100", "M200", "M210", "M500", "M600", "M610"}:
-            continue
-        manter.append(l.strip())
-    return manter, []
 
 def _ensure_line(s: str) -> str:
     s = (s or "").rstrip("\r\n").strip()
@@ -132,9 +97,36 @@ def _ensure_line(s: str) -> str:
         s += "|"
     return s
 
-def ler_linhas_exportado(path: str) -> list[str]:
-    with open(path, "r", encoding="iso-8859-1", errors="ignore") as f:
-        return [ln.rstrip("\r\n") for ln in f if ln.strip()]
+def _dec_m(raw) -> Decimal:
+    txt = str(raw or "").strip()
+    if not txt:
+        return Decimal("0.00")
+    try:
+        return Decimal(txt.replace(".", "").replace(",", "."))
+    except Exception:
+        return Decimal("0.00")
+
+
+def _split_m(ln: str) -> tuple[str, list[str]]:
+    partes = _clean_sped_line(ln).strip("|").split("|")
+    if not partes:
+        return "", []
+    return partes[0], partes[1:]
+
+
+def _join_m(reg: str, dados: list[str]) -> str:
+    return "|" + "|".join([reg] + [str(x or "") for x in dados]) + "|"
+
+
+def _ensure_len(dados: list[str], idx: int) -> None:
+    if len(dados) <= idx:
+        dados.extend([""] * (idx + 1 - len(dados)))
+
+
+def _somar_campo(dados: list[str], idx: int, valor: Decimal) -> None:
+    _ensure_len(dados, idx)
+    dados[idx] = _fmt_br(_q2(_dec_m(dados[idx]) + valor))
+
 
 def caminho_sped_corrigido(nome_arquivo: str) -> str:
     downloads = Path.home() / "Downloads"
@@ -150,6 +142,18 @@ def _fields(line: str) -> List[str]:
     parts = s.strip("|").split("|")
     # parts[0] = REG
     return parts[1:] if len(parts) > 1 else []
+
+def _to_dec(v: str) -> Decimal:
+    """Converte '1.234,56' ou '1234,56' em Decimal."""
+    s = (v or "").strip()
+    if not s:
+        return Decimal("0.00")
+    s = s.replace(".", "").replace(",", ".")
+    try:
+        return Decimal(s)
+    except Exception:
+        return Decimal("0.00")
+
 
 def _key_m(line: str) -> Tuple[str, Tuple[str, ...]]:
     """
@@ -218,30 +222,7 @@ def sanitizar_bloco_m(bloco_m: List[str]) -> List[str]:
     out.append(f"|M990|{len(out) + 1}|")
     return out
 
-def _to_dec(v: str) -> Decimal:
-    """Converte '1.234,56' ou '1234,56' em Decimal."""
-    s = (v or "").strip()
-    if not s:
-        return Decimal("0.00")
-    s = s.replace(".", "").replace(",", ".")
-    try:
-        return Decimal(s)
-    except Exception:
-        return Decimal("0.00")
 
-def _json_any(obj) -> Dict[str, Any]:
-    """
-    Tenta extrair o JSON da revisao de forma tolerante:
-    - revisao_json
-    - payload_json
-    - conteudo_json
-    - meta_json
-    """
-    for attr in ("revisao_json", "payload_json", "conteudo_json", "meta_json", "json"):
-        v = getattr(obj, attr, None)
-        if isinstance(v, dict) and v:
-            return v
-    return {}
 
 def carregar_ajustes_m(db, *, versao_id: int) -> List[Dict[str, Any]]:
     rows = (
@@ -273,10 +254,31 @@ def carregar_ajustes_m(db, *, versao_id: int) -> List[Dict[str, Any]]:
 
     return ajustes
 
-def map_nat_bc_cred_por_cfop(cfop: str) -> str:
-    cfop = str(cfop or "").strip()
-    if cfop == "1101":
-        return "02"  # insumo
-    if cfop == "1102":
-        return "01"  # revenda
-    return "01"
+def extrair_cods_cred_bloco_m(linhas_m: list[str]) -> set[str]:
+    cods = set()
+    for ln in linhas_m or []:
+        ln = _clean_sped_line(ln)
+        reg = _reg_of_line(ln)
+        if reg in {"M100", "M500"}:
+            partes = ln.strip("|").split("|")
+            if len(partes) > 1 and str(partes[1]).strip():
+                cods.add(str(partes[1]).strip())
+    return cods
+
+def map_nat_por_cst_do_m_original(linhas_m: list[str]) -> dict[str, str]:
+    mapa = {}
+    for ln in linhas_m or []:
+        ln = _clean_sped_line(ln)
+        reg = _reg_of_line(ln)
+        if reg not in {"M105", "M505"}:
+            continue
+
+        partes = ln.strip("|").split("|")
+        # |M105|NAT|CST|...
+        if len(partes) > 2:
+            nat = str(partes[1] or "").strip()
+            cst = str(partes[2] or "").strip()
+            if nat and cst and cst not in mapa:
+                mapa[cst] = nat
+
+    return mapa
