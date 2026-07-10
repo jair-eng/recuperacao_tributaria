@@ -39,6 +39,9 @@ def dec_sped_safe(raw: object) -> Decimal:
     except Exception:
         return Decimal("0")
 
+def preview_linha_sped(linha: str, limite: int = 180) -> str:
+    linha = str(linha or "").replace("\n", "\\n")
+    return linha[:limite]
 
 def join_sped_line(reg: str, dados: list[Any]) -> str:
     return "|" + "|".join([str(reg)] + ["" if x is None else str(x) for x in dados]) + "|"

@@ -289,19 +289,72 @@ def inserir_c170s_da_nf_encadeados(
     fator_base_credito: float | None = None,
     aliq_pis: str | None = None,
     aliq_cofins: str | None = None,
+    cod_cred: str | None = None,
+    nat_bc_cred: str | None = None,
+    apontamento_id: int | None = None,
+    motivo_codigo: str = "CORRETIVA_V2_SO_ICMS",
 ) -> Dict[str, Any]:
     total_inseridos = 0
 
     registro_id_alvo = getattr(linha_c100, "registro_id", None)
     linha_ref_alvo = int(getattr(linha_c100, "linha", 0) or 0)
-
     dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
     acao = "INSERT_AFTER"
 
-    precisa_encadear = len(itens or []) > 1
+    revisao_fim_bloco_id = None
 
-    for idx, it in enumerate(itens or [], start=1):
+    log.warning(
+        "[C170 ENC DBG] start | nf=%s chave=%s c100_rev=%s c100_reg=%s c100_linha=%s c100_rid=%s itens=%s contexto=%s",
+        getattr(nf, "id", None),
+        getattr(nf, "chave_nfe", None),
+        getattr(linha_c100, "revisao_id", None),
+        getattr(linha_c100, "reg", None),
+        getattr(linha_c100, "linha", None),
+        getattr(linha_c100, "registro_id", None),
+        len(itens),
+        contexto,
+    )
+
+    log.debug(
+        "C170 itens origem nf_id=%s itens=%s",
+        getattr(nf, "id", None),
+        [
+            {
+                "item_id": int(getattr(it, "id", 0) or 0),
+                "num_item": getattr(it, "num_item", None),
+                "cod_item": getattr(it, "cod_item", None),
+                "descricao": getattr(it, "descricao", None),
+                "cfop": getattr(it, "cfop", None),
+                "cst_icms": getattr(it, "cst_icms", None),
+                "aliq_icms": str(getattr(it, "aliq_icms", None)),
+                "vl_item": str(getattr(it, "vl_item", None)),
+                "vl_desc": str(getattr(it, "vl_desc", None)),
+                "vl_icms": str(getattr(it, "vl_icms", None)),
+                "qtd": str(getattr(it, "qtd", None)),
+                "unid": getattr(it, "unid", None),
+                "cod_nat": getattr(it, "cod_nat", None),
+                "cod_cta": getattr(it, "cod_cta", None),
+            }
+            for it in itens
+        ],
+    )
+
+    for i, it in enumerate(itens, start=1):
         item_id = int(getattr(it, "id", 0) or 0)
+
+        log.warning(
+            "[C170 ENC DBG] loop antes | nf=%s idx=%s item=%s cod_item=%s cfop=%s "
+            "alvo_registro_id=%s alvo_linha=%s acao=%s revisao_fim_atual=%s",
+            getattr(nf, "id", None),
+            i,
+            item_id,
+            getattr(it, "cod_item", None),
+            getattr(it, "cfop", None),
+            registro_id_alvo,
+            linha_ref_alvo,
+            acao,
+            revisao_fim_bloco_id,
+        )
 
         if item_id and _ja_existe_revisao_insert_para_item(
             db,
@@ -309,9 +362,10 @@ def inserir_c170s_da_nf_encadeados(
             nf_icms_item_id=item_id,
             contexto=contexto,
         ):
-            log.info(
-                "C170 insert ignorado: revisão já existe | versao=%s item_id=%s contexto=%s",
+            log.warning(
+                "[C170 ENC DBG] skip revisão já existe | versao=%s nf=%s item=%s contexto=%s",
                 versao_origem_id,
+                getattr(nf, "id", None),
                 item_id,
                 contexto,
             )
@@ -326,16 +380,22 @@ def inserir_c170s_da_nf_encadeados(
             aliq_cofins=aliq_cofins,
         )
 
-        meta = None
-        if str(contexto or "").strip().upper() == "LC192":
-            meta = {
-                "contexto_credito": "LC192",
-                "tipo_credito": "COMB_LC192_V1",
-                "cod_base_credito": "206",
-                "natureza_credito_m": "206",
-                "cst_pis": "61",
-                "cst_cofins": "61",
-            }
+        log.debug(
+            "C170 linha nova nf_id=%s item_id=%s linha_nova=%s",
+            getattr(nf, "id", None),
+            item_id,
+            linha_nova,
+        )
+
+        meta = {
+            "contexto_credito": contexto,
+            "cod_cred": cod_cred,
+            "nat_bc_cred": nat_bc_cred,
+            "aliq_pis": aliq_pis,
+            "aliq_cofins": aliq_cofins,
+            "nf_icms_base_id": int(getattr(nf, "id", 0) or 0),
+            "nf_icms_item_id": item_id,
+        }
 
         rv = EfdRevisao(
             versao_origem_id=int(versao_origem_id),
@@ -350,18 +410,30 @@ def inserir_c170s_da_nf_encadeados(
                 "nf_icms_base_id": int(nf.id),
                 "origem": "ICMS_IPI",
                 "contexto": contexto,
+                "cod_cred": cod_cred,
+                "nat_bc_cred": nat_bc_cred,
                 "meta": meta,
             },
-            motivo_codigo="CONTRIB_SEM_C170_V1",
+            motivo_codigo=motivo_codigo,
+            apontamento_id=apontamento_id,
         )
 
         db.add(rv)
         db.flush()
+        revisao_fim_bloco_id = int(rv.id)
+
+        log.warning(
+            "[C170 ENC DBG] revisao gravada | rv=%s nf=%s item=%s "
+            "rv_registro_id=%s rv_linha_ref=%s acao=%s",
+            rv.id,
+            getattr(nf, "id", None),
+            item_id,
+            rv.registro_id,
+            rv.revisao_json.get("linha_referencia"),
+            rv.acao,
+        )
 
         total_inseridos += 1
-
-        if not precisa_encadear:
-            continue
 
         linhas = carregar_linhas_logicas_com_revisoes_e_insert(
             db,
@@ -370,22 +442,67 @@ def inserir_c170s_da_nf_encadeados(
         )
 
         linha_c170_inserido = None
+        idx_c170 = None
 
-        for l in linhas:
+        for idx, l in enumerate(linhas):
             if (
                 str(getattr(l, "reg", "")).upper() == "C170"
                 and getattr(l, "revisao_id", None) == rv.id
             ):
                 linha_c170_inserido = l
+                idx_c170 = idx
                 break
 
         if linha_c170_inserido:
+            log.warning(
+                "[C170 ENC DBG] localizado pos-overlay | rv=%s nf=%s item=%s idx=%s "
+                "linha=%s reg=%s rev=%s rid=%s pai=%s",
+                rv.id,
+                getattr(nf, "id", None),
+                item_id,
+                idx_c170,
+                getattr(linha_c170_inserido, "linha", None),
+                getattr(linha_c170_inserido, "reg", None),
+                getattr(linha_c170_inserido, "revisao_id", None),
+                getattr(linha_c170_inserido, "registro_id", None),
+                getattr(linha_c170_inserido, "pai_id", None),
+            )
+
+            try:
+                janela = linhas[max(0, idx_c170 - 3): idx_c170 + 4]
+                for j, lx in enumerate(janela, start=max(0, idx_c170 - 3)):
+                    log.warning(
+                        "[C170 ENC DBG] ctx rv=%s idx=%s linha=%s reg=%s rev=%s rid=%s pai=%s dados0=%s",
+                        rv.id,
+                        j,
+                        getattr(lx, "linha", None),
+                        getattr(lx, "reg", None),
+                        getattr(lx, "revisao_id", None),
+                        getattr(lx, "registro_id", None),
+                        getattr(lx, "pai_id", None),
+                        (getattr(lx, "dados", []) or [])[:8],
+                    )
+            except Exception:
+                log.exception("[C170 ENC DBG] erro janela pos-overlay rv=%s", rv.id)
+
             registro_id_alvo = getattr(linha_c170_inserido, "registro_id", None)
             linha_ref_alvo = int(getattr(linha_c170_inserido, "linha", 0) or 0)
             acao = "INSERT_AFTER"
+
+            log.warning(
+                "[C170 ENC DBG] nova ancora | nf=%s item=%s prox_registro_id=%s prox_linha_ref=%s prox_acao=%s prox_rev_fim=%s",
+                getattr(nf, "id", None),
+                item_id,
+                registro_id_alvo,
+                linha_ref_alvo,
+                acao,
+                revisao_fim_bloco_id,
+            )
+
         else:
             log.warning(
-                "C170 pos-overlay miss rv_id=%s nf_id=%s item_id=%s linha_ref_alvo_anterior=%s registro_id_alvo_anterior=%s",
+                "[C170 ENC DBG] MISS pos-overlay | rv=%s nf=%s item=%s "
+                "linha_ref_anterior=%s registro_id_anterior=%s",
                 rv.id,
                 getattr(nf, "id", None),
                 item_id,
@@ -393,8 +510,18 @@ def inserir_c170s_da_nf_encadeados(
                 registro_id_alvo,
             )
 
+    log.warning(
+        "[C170 ENC DBG] fim | nf=%s total=%s registro_id_fim=%s linha_fim=%s revisao_fim=%s",
+        getattr(nf, "id", None),
+        total_inseridos,
+        registro_id_alvo,
+        linha_ref_alvo,
+        revisao_fim_bloco_id,
+    )
+
     return {
         "total_inseridos": total_inseridos,
         "registro_id_fim_bloco": registro_id_alvo,
         "linha_fim_bloco": linha_ref_alvo,
+        "revisao_fim_bloco_id": revisao_fim_bloco_id,
     }

@@ -491,20 +491,35 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
     # 8) Materializa SO_ICMS
     # --------------------------------------------------
     qtd_so_icms = 0
+    qtd_so_icms_sem_c100 = 0
+    qtd_so_icms_sem_c170 = 0
 
     for icms_item in icms_itens:
+        chave_nfe_icms = str(icms_item.chave_nfe or "").strip()
+        num_item_icms = str(icms_item.num_item or "").strip()
+        cod_item_icms = str(icms_item.cod_item or "").strip()
+
         chave_icms = (
-            str(icms_item.chave_nfe or "").strip(),
-            str(icms_item.num_item or "").strip(),
-            str(icms_item.cod_item or "").strip(),
+            chave_nfe_icms,
+            num_item_icms,
+            cod_item_icms,
         )
 
+        # Se já existe este item na EFD Contribuições, não é SO_ICMS.
         if chave_icms in chaves_contrib:
             continue
 
-        modelo = icms_item.base.modelo if icms_item.base else None
+        nf_base = getattr(icms_item, "base", None)
 
-        chave_nfe_icms = str(icms_item.chave_nfe or "").strip()
+        modelo = (
+                str(getattr(nf_base, "cod_mod", None) or "")
+                or str(getattr(nf_base, "modelo", None) or "")
+                or str(getattr(icms_item, "cod_mod", None) or "")
+        ).strip()
+
+        if not modelo:
+            modelo = None
+
         c100_contrib = c100_por_chave_contrib.get(chave_nfe_icms)
 
         registro_id_c100_contrib = (
@@ -514,16 +529,37 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             c100_contrib["linha_c100"] if c100_contrib else None
         )
 
+        contrib_tem_c100 = bool(registro_id_c100_contrib)
+
         if modelo == "55":
-            tipo_normalizacao = (
-                "CONTRIB_SEM_C170"
-                if registro_id_c100_contrib
-                else "CONTRIB_SEM_C100_C170"
-            )
+            if contrib_tem_c100:
+                tipo_normalizacao = "CONTRIB_SEM_C170"
+                tipo_corretiva_v2 = "INSERIR_C170_EM_C100_EXISTENTE"
+                reg_ancora = "C100"
+                registro_id_ancora = registro_id_c100_contrib
+                linha_ancora = linha_c100_contrib
+                qtd_so_icms_sem_c170 += 1
+            else:
+                tipo_normalizacao = "CONTRIB_SEM_C100_C170"
+                tipo_corretiva_v2 = "INSERIR_C100_C170"
+                reg_ancora = "C990"
+                registro_id_ancora = None
+                linha_ancora = None
+                qtd_so_icms_sem_c100 += 1
+
         elif modelo == "57":
             tipo_normalizacao = "CONTRIB_D100_FALTANTE"
+            tipo_corretiva_v2 = "INSERIR_D100"
+            reg_ancora = "D100"
+            registro_id_ancora = None
+            linha_ancora = None
+
         else:
             tipo_normalizacao = "CONTRIB_DOC_FALTANTE"
+            tipo_corretiva_v2 = "NAO_SUPORTADO"
+            reg_ancora = None
+            registro_id_ancora = None
+            linha_ancora = None
 
         semantica_fiscal = {
             "contrib": None,
@@ -534,21 +570,33 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             ),
         }
 
+        nf_icms_base_id = int(getattr(icms_item, "nf_icms_base_id", 0) or 0)
+
+        if not nf_icms_base_id and nf_base is not None:
+            nf_icms_base_id = int(getattr(nf_base, "id", 0) or 0)
+
+        dt_doc_nf = getattr(nf_base, "dt_doc", None) if nf_base else None
+        dt_es_nf = getattr(nf_base, "dt_es", None) if nf_base else None
+
+        dt_doc_txt = dt_doc_nf.isoformat() if hasattr(dt_doc_nf, "isoformat") else dt_doc_nf
+        dt_es_txt = dt_es_nf.isoformat() if hasattr(dt_es_nf, "isoformat") else dt_es_nf
+
         item = ItemFiscalConsolidado(
             contexto_id=contexto.id,
             empresa_id=versao.empresa_id,
             versao_id=versao.id,
             periodo=periodo_base,
+
             registro_id_c100=registro_id_c100_contrib,
             nf_icms_item_id=icms_item.id,
 
-            tem_no_contrib=bool(registro_id_c100_contrib),
+            tem_no_contrib=contrib_tem_c100,
             tem_no_icms=True,
             status_cruzamento="SO_ICMS",
 
-            chave_nfe=icms_item.chave_nfe,
-            num_item=icms_item.num_item,
-            cod_item=icms_item.cod_item,
+            chave_nfe=chave_nfe_icms,
+            num_item=num_item_icms,
+            cod_item=cod_item_icms,
             descr_item=icms_item.descricao,
             ncm=icms_item.ncm,
             cfop=icms_item.cfop,
@@ -574,11 +622,40 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             meta={
                 "origem": "EFD_ICMS_IPI",
                 "icms_match": True,
+
+                # --------------------------------------------------
+                # Identificação NF / item ICMS
+                # --------------------------------------------------
+                "nf_icms_base_id": nf_icms_base_id,
+                "nf_icms_item_id": int(icms_item.id),
+                "chave_nfe": chave_nfe_icms,
+                "num_item": num_item_icms,
+                "cod_item": cod_item_icms,
+
+                # Dados do documento/pai ICMS
+                "cod_mod": modelo,
                 "modelo": modelo,
+                "cod_part": getattr(nf_base, "cod_part", None) if nf_base else None,
+                "serie": getattr(nf_base, "serie", None) if nf_base else None,
+                "num_doc": getattr(nf_base, "num_doc", None) if nf_base else None,
+                "dt_doc": dt_doc_txt,
+                "dt_es": dt_es_txt,
+
+                # --------------------------------------------------
+                # Normalização V2 — fonte da verdade
+                # --------------------------------------------------
+                "status_cruzamento": "SO_ICMS",
                 "tipo_normalizacao": tipo_normalizacao,
-                "linha_c100": linha_c100_contrib,
-                "contrib_tem_c100": bool(registro_id_c100_contrib),
+                "tipo_corretiva_v2": tipo_corretiva_v2,
+
+                "contrib_tem_c100": contrib_tem_c100,
                 "registro_id_c100": registro_id_c100_contrib,
+                "linha_c100": linha_c100_contrib,
+
+                "reg_ancora": reg_ancora,
+                "registro_id_ancora": registro_id_ancora,
+                "linha_ancora": linha_ancora,
+
                 "semantica_fiscal": semantica_fiscal,
             },
         )
@@ -587,9 +664,11 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         qtd_so_icms += 1
 
     logger.info(
-        "## [CTX v%s] so_icms materializados=%s tempo=%.3fs ##",
+        "## [CTX v%s] so_icms materializados=%s sem_c100=%s sem_c170=%s tempo=%.3fs ##",
         versao_id,
         qtd_so_icms,
+        qtd_so_icms_sem_c100,
+        qtd_so_icms_sem_c170,
         time.perf_counter() - t0,
     )
 

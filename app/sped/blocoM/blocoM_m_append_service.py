@@ -5,7 +5,7 @@ from typing import Dict, List
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
 from app.Legacy.fiscal.constants import REGS_M_RELEVANTES
 from app.sped.blocoM.m_utils import _clean_sped_line, _reg_of_line, _fmt_br, _q2, sanitizar_bloco_m, _split_m, \
-    _somar_campo, _join_m, _dec_m
+    _somar_campo, _join_m, _dec_m,  _ensure_len
 
 
 def bloco_m_tem_valor_relevante(linhas_m: List[str]) -> bool:
@@ -182,15 +182,23 @@ def inserir_creditos_no_bloco_m_original(
                 base = _q2(delta["base"])
                 cred = _q2(delta["cred"])
 
-                # M100:
-                # 2 VL_BC_PIS
-                # 6 VL_CRED
-                # 10 VL_CRED_DISP
-                # 13 SL_CRED
                 _somar_campo(dados, 2, base)
                 _somar_campo(dados, 6, cred)
                 _somar_campo(dados, 10, cred)
-                _somar_campo(dados, 13, cred)
+
+                _ensure_len(dados, 13)
+
+                vl_desc_original = _q2(_dec_m(dados[12]))
+                vl_cred_disp = _q2(_dec_m(dados[10]))
+                sld = _q2(vl_cred_disp - vl_desc_original)
+
+                if sld > 0:
+                    dados[11] = "1"
+                    dados[13] = _fmt_br(sld)
+                else:
+                    dados[11] = "0"
+                    dados[12] = _fmt_br(vl_cred_disp)
+                    dados[13] = "0,00"
 
                 encontrou_m100.add(cod_cred)
                 ln = _join_m("M100", dados)
@@ -203,15 +211,23 @@ def inserir_creditos_no_bloco_m_original(
                 base = _q2(delta["base"])
                 cred = _q2(delta["cred"])
 
-                # M500:
-                # 2 VL_BC_COFINS
-                # 6 VL_CRED
-                # 10 VL_CRED_DISP
-                # 13 SL_CRED
                 _somar_campo(dados, 2, base)
                 _somar_campo(dados, 6, cred)
                 _somar_campo(dados, 10, cred)
-                _somar_campo(dados, 13, cred)
+
+                _ensure_len(dados, 13)
+
+                vl_desc_original = _q2(_dec_m(dados[12]))
+                vl_cred_disp = _q2(_dec_m(dados[10]))
+                sld = _q2(vl_cred_disp - vl_desc_original)
+
+                if sld > 0:
+                    dados[11] = "1"
+                    dados[13] = _fmt_br(sld)
+                else:
+                    dados[11] = "0"
+                    dados[12] = _fmt_br(vl_cred_disp)
+                    dados[13] = "0,00"
 
                 encontrou_m500.add(cod_cred)
                 ln = _join_m("M500", dados)

@@ -6,12 +6,11 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS  # 0.0165 / 0.0760
 from app.Legacy.fiscal.constants import DOM_GERAL
-from app.icms_ipi.icms_utils_fiscal import _cfop_elegivel_por_dominio
 from app.services.dominio_service import resolver_dominio_por_versao
 from app.sped.blocoM.blocoM_m_append_service import bloco_m_tem_valor_relevante, gerar_linhas_m_credito_append, \
     inserir_creditos_no_bloco_m_original
-from app.sped.bloco_1.historico_fs import extrair_cnpj_periodo_do_0000, buscar_sped_exportado_anterior_por_pasta, \
-    ler_linhas_sped
+from app.sped.bloco_1.credito_estoque_v2_service import atualizar_credito_estoque_v2, buscar_creditos_estoque_v2
+from app.sped.bloco_1.historico_fs import extrair_cnpj_periodo_do_0000
 from app.sped.utils_geral import dec_br
 from app.legacy_service.revisao_override_m_service import (
     buscar_override_bloco_m,
@@ -20,8 +19,7 @@ from app.legacy_service.revisao_override_m_service import (
 from app.sped.blocoM.blocoM import construir_bloco_m_v3
 from app.sped.bloco_0.bloco_0_0900 import aplicar_0900_se_necessario, recalcular_0990_bloco0
 from app.sped.bloco_1.builder import (
-    montar_bloco_1_1100_1500_cumulativo, extrair_creditos_mes_bloco_m_por_cod_cred,
-    _limpar_parte_bloco_1
+     montar_bloco_1_com_estoque_v2
 )
 from app.db.models import EfdVersao, EfdArquivo, EfdRegistro
 from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
@@ -153,6 +151,28 @@ def exportar_sped(
 
         for ln in linhas:
             conteudo = obter_conteudo_final(ln) or ""
+
+            ###
+            dbg_0200 = [
+                ln for ln in conteudo_linhas
+                if (ln or "").startswith("|0200|")
+            ]
+
+            logger.warning(
+                "[EXPORT_DBG_0200] total_0200_final=%s primeiros=%s",
+                len(dbg_0200),
+                dbg_0200[:10],
+            )
+            for cod in ["101", "7723051324", "7723047602", "7723050954", "7723048781"]:
+                achou = [ln for ln in dbg_0200 if f"|0200|{cod}|" in ln]
+                logger.warning(
+                    "[EXPORT_DBG_0200_COD] cod_item=%s achou=%s linha=%s",
+                    cod,
+                    bool(achou),
+                    achou[:1],
+                )
+
+            ###
             if "|C170|" not in conteudo:
                 continue
 
@@ -214,7 +234,11 @@ def exportar_sped(
 
             meta_rev = {}
             if isinstance(rev_json, dict):
-                meta_rev = rev_json.get("meta") if isinstance(rev_json.get("meta"), dict) else {}
+                meta_rev = (
+                    rev_json.get("meta")
+                    if isinstance(rev_json.get("meta"), dict)
+                    else rev_json
+                )
 
             revisao_id = int(getattr(ln, "revisao_id", 0) or 0)
 
@@ -232,6 +256,12 @@ def exportar_sped(
 
             if not nat:
                 if revisao_id > 0:
+                    logger.warning(
+                        "DEBUG DELTA | revisao_id=%s meta_ln=%s rev_json=%s",
+                        revisao_id,
+                        meta_ln,
+                        rev_json,
+                    )
                     raise RuntimeError(
                         f"DELTA sem nat/base_credito | rid={rid_int} cfop={cfop}"
                     )
@@ -290,7 +320,11 @@ def exportar_sped(
             if eh_delta_motor:
                 meta_rev = {}
                 if isinstance(rev_json, dict):
-                    meta_rev = rev_json.get("meta") if isinstance(rev_json.get("meta"), dict) else {}
+                    meta_rev = (
+                        rev_json.get("meta")
+                        if isinstance(rev_json.get("meta"), dict)
+                        else rev_json
+                    )
 
                 cod_cred_delta = str(
                     (meta_ln.get("cod_cred") if isinstance(meta_ln, dict) else None)
@@ -381,25 +415,6 @@ def exportar_sped(
 
         if not cnpj_empresa:
             logger.warning("HISTÓRICO | CNPJ não encontrado no 0000. Histórico desativado.")
-            linhas_prev = []
-        else:
-            pasta_historico = Path.home() / "Downloads" / "Speds Corrigidos"
-            if not pasta_historico.exists():
-                logger.warning("HISTÓRICO | pasta não existe: %s", pasta_historico)
-                linhas_prev = []
-            else:
-                prev_path = buscar_sped_exportado_anterior_por_pasta(
-                    pasta_speds_corrigidos=pasta_historico,
-                    cnpj_empresa=cnpj_empresa,
-                    periodo_atual=int(periodo_0000) if periodo_0000 else None,
-                    ignorar_path=final_path,
-                )
-                if prev_path:
-                    logger.info("HISTÓRICO | usando arquivo anterior: %s", prev_path.name)
-                    linhas_prev = ler_linhas_sped(prev_path)
-                else:
-                    logger.info("HISTÓRICO | não encontrado. saldo_anterior=0")
-                    linhas_prev = []
 
         # >>> Bloco 0900 (layout PVA real) <<<
         tem_0900_original = any(
@@ -418,6 +433,7 @@ def exportar_sped(
             logger.info("0900 ignorado | original não possui 0900")
 
         conteudo_sem_m = recalcular_0990_bloco0(conteudo_sem_m)
+
 
         # Parse do conteúdo final (já com 0900 se inserido)
         parsed = parse_sped_from_lines(conteudo_sem_m)
@@ -560,62 +576,49 @@ def exportar_sped(
 
             credito_total_1100 = extrair_credito_total_do_bloco_m(bloco_m_override)
 
-        # 7) Bloco 1 (1100/1500)
+        # 7) Bloco 1 (1100/1500) - NOVO ESTOQUE V2
         periodo_atual = getattr(arquivo, "periodo", None)
         if not periodo_atual:
             raise ValueError("EfdArquivo.periodo não preenchido (YYYYMM).")
 
-        periodo_atual_mmaaaa = yyyymm_to_mmyyyy(str(periodo_atual))
+        periodo_atual = str(periodo_atual)
+        periodo_atual_mmaaaa = yyyymm_to_mmyyyy(periodo_atual)
 
-        cods_cont = sorted(
-            {
-                str(cod or "").strip()
-                for cod in base_delta_por_cod_cred_nat_cst.keys()
-                if str(cod or "").strip()
-            }
+        estoques_v2 = buscar_creditos_estoque_v2(
+            db=db,
+            empresa_id=int(versao.empresa_id),
+            periodo_atual=periodo_atual,
         )
 
-        if not cods_cont:
-            cods_cont = sorted(extrair_cods_cred_bloco_m(bloco_m_override))
-
-        bloco_1_linhas: list[str] = []
-
-        for cod_cont in cods_cont:
-            credito_pis_mes, credito_cofins_mes = extrair_creditos_mes_bloco_m_por_cod_cred(
-                bloco_m_override,
-                cod_cont,
-            )
-
-            if credito_pis_mes <= 0 and credito_cofins_mes <= 0:
-                continue
-
-            parte_bloco_1 = montar_bloco_1_1100_1500_cumulativo(
-                linhas_sped=linhas_prev,
-                periodo_atual=periodo_atual_mmaaaa,
-                cod_cont=cod_cont,
-                credito_pis_mes=credito_pis_mes,
-                credito_cofins_mes=credito_cofins_mes,
-            )
-
-            bloco_1_linhas.extend(_limpar_parte_bloco_1(parte_bloco_1))
-
-        # remove duplicidade exata preservando ordem
-        bloco_1_linhas = list(dict.fromkeys(bloco_1_linhas))
-
-        # PVA exige primeiro todos os 1100, depois todos os 1500
-        linhas_1100 = [l for l in bloco_1_linhas if l.startswith("|1100|")]
-        linhas_1500 = [l for l in bloco_1_linhas if l.startswith("|1500|")]
-
-        # mantém qualquer outra linha útil no final, por segurança
-        linhas_outros = [
-            l for l in bloco_1_linhas
-            if not l.startswith("|1100|") and not l.startswith("|1500|")
+        linhas_bloco_1_originais = [
+            ln for ln in conteudo_linhas
+            if (ln or "").lstrip().startswith("|1")
         ]
 
-        bloco_1_linhas = linhas_1100 + linhas_1500 + linhas_outros
+        bloco_1_override = montar_bloco_1_com_estoque_v2(
+            linhas_sped=linhas_bloco_1_originais,
+            periodo_atual=periodo_atual_mmaaaa,
+            estoques_v2=estoques_v2,
+        )
 
-        bloco_1_override = ["|1001|0|"] + bloco_1_linhas
-        bloco_1_override.append(f"|1990|{len(bloco_1_override) + 1}|")
+        logger.warning("DBG BLOCO_1_V2 | estoque_qtd=%s", len(estoques_v2 or []))
+        logger.warning("DBG BLOCO_1_V2 | linhas_originais=%s", len(linhas_bloco_1_originais or []))
+        logger.warning("DBG BLOCO_1_V2 | linhas_final=%s", len(bloco_1_override or []))
+        logger.warning("DBG BLOCO_1_V2 | primeira=%s", bloco_1_override[0] if bloco_1_override else None)
+        logger.warning("DBG BLOCO_1_V2 | ultima=%s", bloco_1_override[-1] if bloco_1_override else None)
+
+        if not bloco_1_override:
+            raise RuntimeError("EXPORT bloqueado: bloco_1_override vazio.")
+
+        if not bloco_1_override[0].startswith("|1001|"):
+            raise RuntimeError(
+                f"EXPORT bloqueado: Bloco 1 sem 1001. Primeira={bloco_1_override[0]}"
+            )
+
+        if not bloco_1_override[-1].startswith("|1990|"):
+            raise RuntimeError(
+                f"EXPORT bloqueado: Bloco 1 sem 1990. Última={bloco_1_override[-1]}"
+            )
 
         logger.debug("BLOCO_M linhas=%s", len(bloco_m_override or []))
 
@@ -632,6 +635,22 @@ def exportar_sped(
             newline=newline,
             bloco_m_override=bloco_m_override,
             bloco_1_override=bloco_1_override,
+        )
+
+        atualizar_credito_estoque_v2(
+            db=db,
+            empresa_id=int(versao.empresa_id),
+            versao_exportada_id=int(versao.id),
+            periodo_origem=periodo_atual,
+            base_delta_por_cod_cred_nat_cst=base_delta_por_cod_cred_nat_cst,
+        )
+
+        logger.warning(
+            "ESTOQUE_V2 ATUALIZADO | empresa_id=%s | versao=%s | periodo=%s | cods=%s",
+            int(versao.empresa_id),
+            int(versao.id),
+            periodo_atual,
+            list((base_delta_por_cod_cred_nat_cst or {}).keys()),
         )
 
         # status/caminho

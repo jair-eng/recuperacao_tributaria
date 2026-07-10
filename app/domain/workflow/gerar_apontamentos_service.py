@@ -241,9 +241,32 @@ def gerar_apontamentos_por_contexto(
             or getattr(item, "registro_id_c170", None)
         )
 
+        meta_item = getattr(item, "meta", None) or {}
+
         tipo_normalizacao = (
-            meta_diag.get("tipo_normalizacao")
-            or getattr(item, "tipo_normalizacao", None)
+                meta_diag.get("tipo_normalizacao")
+                or meta_item.get("tipo_normalizacao")
+                or getattr(item, "tipo_normalizacao", None)
+        )
+
+        tipo_corretiva_v2_meta = (
+                meta_diag.get("tipo_corretiva_v2")
+                or meta_item.get("tipo_corretiva_v2")
+        )
+
+        registro_id_ancora_meta = (
+                meta_diag.get("registro_id_ancora")
+                or meta_item.get("registro_id_ancora")
+        )
+
+        linha_ancora_meta = (
+                meta_diag.get("linha_ancora")
+                or meta_item.get("linha_ancora")
+        )
+
+        reg_ancora_meta = (
+                meta_diag.get("reg_ancora")
+                or meta_item.get("reg_ancora")
         )
 
         if not tipo_normalizacao and status_cruzamento == "SO_ICMS":
@@ -279,6 +302,16 @@ def gerar_apontamentos_por_contexto(
             registro_id_alvo = None
             linha_ref = None
 
+        # Se o materializar já definiu a corretiva/âncora, ele é a fonte principal.
+        if tipo_corretiva_v2_meta:
+            tipo_corretiva_v2 = tipo_corretiva_v2_meta
+
+        if registro_id_ancora_meta is not None:
+            registro_id_alvo = registro_id_ancora_meta
+
+        if linha_ancora_meta is not None:
+            linha_ref = linha_ancora_meta
+
         stats[f"tipo_corretiva:{tipo_corretiva_v2}"] += 1
         stats[f"status:{status_cruzamento}"] += 1
 
@@ -294,6 +327,7 @@ def gerar_apontamentos_por_contexto(
             "contexto_credito": codigo_cenario,
             "natureza_credito_m": nat_bc_cred,
         }
+        meta_item = getattr(item, "meta", None) or {}
         novos_apontamentos.append(
             EfdApontamento(
                 versao_id=int(versao_id),
@@ -305,12 +339,17 @@ def gerar_apontamentos_por_contexto(
                 impacto_financeiro=impacto_estimado,
                 prioridade=diag.get("prioridade"),
                 meta_json=json_safe({
+                    **meta_fiscal,
                     **meta_diag,
                     **meta_fiscal,
                     "meta_fiscal": meta_fiscal,
                     "item_fiscal_consolidado_id": item_fiscal_consolidado_id,
                     "registro_id": registro_id,
-                    "origem": meta_diag.get("origem") or "CONTEXTO_FISCAL",
+                    "origem": meta_diag.get("origem") or meta_item.get("origem") or "CONTEXTO_FISCAL",
+
+                    "nf_icms_base_id": meta_diag.get("nf_icms_base_id") or meta_item.get("nf_icms_base_id"),
+                    "nf_icms_item_id": meta_diag.get("nf_icms_item_id") or meta_item.get("nf_icms_item_id"),
+
                     "score_fiscal": score_result.score,
                     "confianca_fiscal": score_result.confianca,
                     "score_justificativas": score_result.justificativas,
@@ -325,9 +364,12 @@ def gerar_apontamentos_por_contexto(
                     "registro_id_c170": registro_id_c170,
 
                     "reg_ancora": (
-                        "C170"
-                        if tipo_corretiva_v2 == "PATCH_C170_EXISTENTE"
-                        else "C100"
+                        reg_ancora_meta
+                        or (
+                            "C170"
+                            if tipo_corretiva_v2 == "PATCH_C170_EXISTENTE"
+                            else "C100"
+                        )
                     ),
                     "contrib_tem_c100": bool(registro_id_c100),
                     "registro_id_ancora": registro_id_alvo,

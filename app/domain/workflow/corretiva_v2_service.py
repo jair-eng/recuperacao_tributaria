@@ -141,35 +141,105 @@ def _aplicar_corretiva_so_icms_v2(
     )
 
     enq = meta.get("enquadramento") or {}
-    contexto = meta.get("codigo_cenario") or meta.get("cenario")
+
+    contexto = (
+        meta.get("codigo_cenario")
+        or meta.get("cenario")
+        or meta.get("contexto_credito")
+    )
+
     aliq_pis = fmt_aliq_sped(enq.get("aliq_pis") or "")
     aliq_cofins = fmt_aliq_sped(enq.get("aliq_cofins") or "")
 
     tipo_corretiva_v2 = meta.get("tipo_corretiva_v2")
     tipo_normalizacao = meta.get("tipo_normalizacao")
 
-    c100_ja_existe = (
-            tipo_corretiva_v2 == "INSERIR_C170_EM_C100_EXISTENTE"
-            or tipo_normalizacao == "CONTRIB_SEM_C170"
+    registro_id_c100 = (
+        meta.get("registro_id_c100")
+        or getattr(item, "registro_id_c100", None)
     )
 
-    if c100_ja_existe:
+    linha_c100 = (
+        meta.get("linha_c100")
+        or getattr(item, "linha_c100", None)
+        or 0
+    )
+
+    contrib_tem_c100 = bool(
+        meta.get("contrib_tem_c100")
+        or registro_id_c100
+    )
+
+    cod_cred = (
+        enq.get("cod_cred")
+        or enq.get("tipo_credito_codigo")
+        or meta.get("cod_cred")
+        or meta.get("tipo_credito_codigo")
+        or getattr(item, "cod_cred", None)
+        or getattr(item, "tipo_credito_codigo", None)
+    )
+
+    nat_bc_cred = (
+        enq.get("nat_bc_cred")
+        or enq.get("base_credito_codigo")
+        or enq.get("cod_base_credito")
+        or meta.get("nat_bc_cred")
+        or meta.get("base_credito_codigo")
+        or meta.get("cod_base_credito")
+        or getattr(item, "nat_bc_cred", None)
+        or getattr(item, "base_credito_codigo", None)
+        or getattr(item, "cod_base_credito", None)
+    )
+
+    if not cod_cred or not nat_bc_cred:
+        logger.warning(
+            "[SO_ICMS_V2] ENQ INCOMPLETO | ap=%s item=%s cod=%s nat=%s enq=%s",
+            apontamento.id,
+            item.id,
+            cod_cred,
+            nat_bc_cred,
+            enq,
+        )
+
+    logger.warning(
+        "[SO_ICMS_V2] DECISAO | ap=%s item=%s tipo=%s normalizacao=%s contrib_tem_c100=%s reg_c100=%s linha_c100=%s chave=%s",
+        apontamento.id,
+        item.id,
+        tipo_corretiva_v2,
+        tipo_normalizacao,
+        contrib_tem_c100,
+        registro_id_c100,
+        linha_c100,
+        chave,
+    )
+
+    # ------------------------------------------------------------
+    # Caso 1: C100 existe na EFD -> inserir apenas C170
+    # ------------------------------------------------------------
+    if contrib_tem_c100:
+        if tipo_corretiva_v2 == "INSERIR_C100_C170":
+            logger.warning(
+                "[SO_ICMS_V2] META INCONSISTENTE | ap=%s diz INSERIR_C100_C170 mas C100 existe reg_c100=%s",
+                apontamento.id,
+                registro_id_c100,
+            )
+
         registro_id_alvo = (
-                meta.get("registro_id_ancora")
-                or meta.get("registro_id_c100")
+            meta.get("registro_id_ancora")
+            or registro_id_c100
         )
 
         linha_ref = (
-                meta.get("linha_ancora")
-                or meta.get("linha_c100")
-                or 0
+            meta.get("linha_ancora")
+            or linha_c100
+            or 0
         )
 
         if not registro_id_alvo:
             return {
                 "ok": False,
                 "status": "erro",
-                "msg": "CONTRIB_SEM_C170 sem registro_id_ancora/registro_id_c100 no apontamento.",
+                "msg": "C100 existe, mas sem registro_id_ancora/registro_id_c100 para inserir C170.",
                 "chave_nfe": chave,
                 "tipo_corretiva": "INSERIR_C170_EM_C100_EXISTENTE",
             }
@@ -183,8 +253,9 @@ def _aplicar_corretiva_so_icms_v2(
             contexto=contexto,
             aliq_pis=aliq_pis,
             aliq_cofins=aliq_cofins,
-            cod_cred=enq.get("cod_cred"),
-            nat_bc_cred=enq.get("nat_bc_cred"),
+            cod_cred=cod_cred,
+            nat_bc_cred=nat_bc_cred,
+            motivo_codigo="CORRETIVA_V2_SO_ICMS",
             apontamento_id=int(apontamento.id),
         )
 
@@ -192,7 +263,7 @@ def _aplicar_corretiva_so_icms_v2(
             return {
                 "ok": False,
                 "status": "skip",
-                "msg": "C100 já existe, mas não foi possível criar revisão C170.",
+                "msg": "C100 existe, mas não foi possível criar revisão C170.",
                 "chave_nfe": chave,
                 "tipo_corretiva": "INSERIR_C170_EM_C100_EXISTENTE",
             }
@@ -204,7 +275,18 @@ def _aplicar_corretiva_so_icms_v2(
             "registro_id_alvo": int(registro_id_alvo),
         }
 
+        tipo_resultado = "INSERIR_C170_EM_C100_EXISTENTE"
+
+    # ------------------------------------------------------------
+    # Caso 2: C100 não existe na EFD -> inserir bloco C100 + C170
+    # ------------------------------------------------------------
     else:
+        if tipo_corretiva_v2 == "INSERIR_C170_EM_C100_EXISTENTE":
+            logger.warning(
+                "[SO_ICMS_V2] META INCONSISTENTE | ap=%s diz INSERIR_C170_EM_C100_EXISTENTE mas C100 não existe",
+                apontamento.id,
+            )
+
         registro_id_alvo, linha_ref_alvo, acao_inicial = _resolver_ancora_bloco_c_fim(
             db,
             versao_origem_id=versao_id,
@@ -222,11 +304,12 @@ def _aplicar_corretiva_so_icms_v2(
             contexto=contexto,
             aliq_pis=aliq_pis,
             aliq_cofins=aliq_cofins,
-            cod_cred=enq.get("cod_cred"),
-            nat_bc_cred=enq.get("nat_bc_cred"),
+            cod_cred=cod_cred,
+            nat_bc_cred=nat_bc_cred,
             motivo_codigo="CORRETIVA_V2_SO_ICMS",
         )
 
+        tipo_resultado = "INSERIR_C100_C170"
 
     apontamento.resolvido = True
     db.add(apontamento)
@@ -235,7 +318,7 @@ def _aplicar_corretiva_so_icms_v2(
     return {
         "ok": True,
         "status": "OK",
-        "tipo_corretiva": "INSERIR_C170_EM_C100_EXISTENTE" if c100_ja_existe else "INSERIR_C100_C170",
+        "tipo_corretiva": tipo_resultado,
         "apontamento_id": int(apontamento.id),
         "versao_id": versao_id,
         "item_fiscal_consolidado_id": int(item.id),
@@ -244,7 +327,7 @@ def _aplicar_corretiva_so_icms_v2(
         "chave_nfe": chave,
         "mestres": res_mestres,
         "resultado": res_bloco,
-        "msg": "Corretiva V2 SO_ICMS aplicada: C100/C170 propostos via revisão.",
+        "msg": "Corretiva V2 SO_ICMS aplicada.",
     }
 
 def _aplicar_corretiva_match_patch_c170_v2(

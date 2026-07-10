@@ -162,17 +162,11 @@ def carregar_linhas_logicas_com_revisoes_e_insert(
     versao_origem_id: int,
     versao_final_id: int | None = None,
 ) -> list[LinhaLogica]:
-    ###
-    import traceback
-    logger = logging.getLogger(__name__)
-    logger.warning(
-        "[DEBUG OVERLAY CHAMADO] versao=%s",
+    log.info(
+        "LOADER revisoes+insert | origem=%s final=%s",
         versao_origem_id,
+        versao_final_id,
     )
-
-    for linha in traceback.format_stack(limit=8):
-        logger.warning(linha.strip())
-    ##3
 
     regs = (
         db.query(EfdRegistro)
@@ -187,7 +181,7 @@ def carregar_linhas_logicas_com_revisoes_e_insert(
     linhas_originais: list[LinhaLogica] = [LinhaLogica.from_efd_registro(r) for r in regs]
 
     if not linhas_originais:
-
+        log.debug("LOADER revisoes+insert sem linhas base | origem=%s", versao_origem_id)
         return []
 
     q = db.query(EfdRevisao).filter(
@@ -202,7 +196,12 @@ def carregar_linhas_logicas_com_revisoes_e_insert(
 
     revisoes_db = q.order_by(EfdRevisao.created_at.asc(), EfdRevisao.id.asc()).all()
     if not revisoes_db:
-
+        log.debug(
+            "LOADER revisoes+insert sem revisoes | origem=%s final=%s linhas=%s",
+            versao_origem_id,
+            versao_final_id,
+            len(linhas_originais),
+        )
         return linhas_originais
 
     revisoes_dict: list[dict] = []

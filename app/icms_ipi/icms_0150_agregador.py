@@ -300,6 +300,7 @@ def criar_revisao_insert_0150(
             "chave_nfe": getattr(nf, "chave_nfe", None),
             "cod_part": getattr(nf, "cod_part", None),
             "participante_cnpj": getattr(nf, "participante_cnpj", None),
+            "_ordem_bloco0": 150,
         },
         motivo_codigo="CONTRIB_PART_0150_V1",
         apontamento_id=None,

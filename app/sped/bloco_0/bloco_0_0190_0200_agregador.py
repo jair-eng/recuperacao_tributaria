@@ -1,16 +1,56 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-from app.db.models import EfdRevisao, NfIcmsBase, NfIcmsItem, EfdRegistro
+from app.db.models import EfdRevisao, NfIcmsBase, NfIcmsItem, EfdRegistro, ItemFiscalConsolidado
+from app.domain.ecd.ecd_conta_classificador_service import classificar_texto_por_natureza_esperada
 from app.icms_ipi.icms_0150_agregador import resolver_ou_criar_0150_por_cnpj, _buscar_0150_logico_por_cnpj, \
     _buscar_0150_logico_por_cod_part, _fmt_campo, _somente_digitos
 from app.icms_ipi.icms_helpers import _campo
 from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.sped.bloco_0.bloco_0_helpers import _norm, _norm_upper, _existe_0190_na_versao, _existe_0200_na_versao
 from typing import Dict, List, Optional
-
+from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
+from app.utils.classificacao_utils import classificar_c170_por_catalogo
 from app.utils.sped import montar_cache_mestres_logicos
+import logging
 
+logger = logging.getLogger(__name__)
+
+
+def _resolver_ancora_bloco0_mestres_icms_ipi(
+    db: Session,
+    *,
+    versao_origem_id: int,
+) -> tuple[int | None, int]:
+    # âncora estrutural estável: último 0140 original
+    reg = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0140",
+        )
+        .order_by(EfdRegistro.linha.desc())
+        .first()
+    )
+
+    if reg:
+        return getattr(reg, "id", None), int(getattr(reg, "linha", 0) or 0)
+
+    # fallback seguro
+    for reg_code in ("0120", "0110", "0100", "0001", "0000"):
+        reg = (
+            db.query(EfdRegistro)
+            .filter(
+                EfdRegistro.versao_id == int(versao_origem_id),
+                EfdRegistro.reg == reg_code,
+            )
+            .order_by(EfdRegistro.linha.desc())
+            .first()
+        )
+        if reg:
+            return getattr(reg, "id", None), int(getattr(reg, "linha", 0) or 0)
+
+    return None, 0
 
 def _resolver_ancora_para_0190(
     db: Session,
@@ -95,7 +135,7 @@ def garantir_0190_para_item(
     if cache_mestres is not None and cache_mestres.get("ancora_0190"):
         registro_id_alvo, linha_ref = cache_mestres["ancora_0190"]
     else:
-        registro_id_alvo, linha_ref = _resolver_ancora_para_0190(
+        registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
             db,
             versao_origem_id=versao_origem_id,
         )
@@ -115,29 +155,17 @@ def garantir_0190_para_item(
             "linha_nova": linha_nova,
             "linha_referencia": int(linha_ref or 0),
             "origem": "ICMS_IPI",
+            "_ordem_bloco0": 190,
             "motivo": f"Cadastro 0190 necessário para item importado do ICMS/IPI ({unid_final})",
         },
         motivo_codigo=motivo_codigo,
         apontamento_id=apontamento_id,
     )
-
-
     db.add(rv)
     db.flush()
 
     if cache_mestres is not None:
         cache_mestres["0190"].add(unid_final)
-
-    print(
-        "[DBG 0190 CRIADO]",
-        {
-            "rv_id": rv.id,
-            "unid": unid_final,
-            "linha_nova": linha_nova,
-            "linha_ref": linha_ref,
-        },
-        flush=True,
-    )
 
     return unid_final
 
@@ -178,7 +206,7 @@ def garantir_0200_para_item(
     if cache_mestres is not None and cache_mestres.get("ancora_0200"):
         registro_id_alvo, linha_ref = cache_mestres["ancora_0200"]
     else:
-        registro_id_alvo, linha_ref = _resolver_ancora_para_0200(
+        registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
             db,
             versao_origem_id=versao_origem_id,
         )
@@ -215,90 +243,18 @@ def garantir_0200_para_item(
             "linha_nova": linha_nova,
             "linha_referencia": int(linha_ref or 0),
             "origem": "ICMS_IPI",
+            "_ordem_bloco0": 200,
             "motivo": f"Cadastro 0200 necessário para item importado do ICMS/IPI ({cod_item_final})",
         },
         motivo_codigo=motivo_codigo,
         apontamento_id=apontamento_id,
     )
-
-
     db.add(rv)
     db.flush()
 
     if cache_mestres is not None:
         cache_mestres["0200"].add(cod_item_final)
-    print(
-        "[DBG 0200 CRIADO]",
-        {
-            "rv_id": rv.id,
-            "cod_item": cod_item_final,
-            "descr_item": descr_item_final,
-            "unid": unid_final,
-            "ncm": ncm_final,
-            "linha_nova": linha_nova,
-            "linha_ref": linha_ref,
-        },
-        flush=True,
-    )
-
     return cod_item_final
-
-
-def _existe_cod_item_0200_na_versao_ou_revisao(
-    db: Session,
-    *,
-    versao_origem_id: int,
-    cod_item: str,
-) -> bool:
-    cod_item = (cod_item or "").strip()
-    if not cod_item:
-        return True
-
-    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
-        db,
-        versao_origem_id=int(versao_origem_id),
-        versao_final_id=None,
-    )
-
-    for l in linhas:
-        if str(getattr(l, "reg", "")).upper() != "0200":
-            continue
-
-        dados = list(getattr(l, "dados", []) or [])
-        # ajuste o índice se necessário
-        cod_item_linha = str(_campo(dados, 1) or "").strip()
-        if cod_item_linha == cod_item:
-            return True
-
-    return False
-
-def _existe_unidade_0190_na_versao_ou_revisao(
-    db: Session,
-    *,
-    versao_origem_id: int,
-    unid: str,
-) -> bool:
-    unid = (unid or "").strip().upper()
-    if not unid:
-        return True
-
-    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
-        db,
-        versao_origem_id=int(versao_origem_id),
-        versao_final_id=None,
-    )
-
-    for l in linhas:
-        if str(getattr(l, "reg", "")).upper() != "0190":
-            continue
-
-        dados = list(getattr(l, "dados", []) or [])
-        # ajuste o índice se seu helper _campo for diferente
-        unid_linha = str(_campo(dados, 1) or "").strip().upper()
-        if unid_linha == unid:
-            return True
-
-    return False
 
 
 def garantir_0500_conta_padrao(
@@ -316,25 +272,12 @@ def garantir_0500_conta_padrao(
     ):
         return cod_cta
 
-    # âncora simples no bloco 0
-    registro_id_alvo = None
-    linha_ref = 0
-    for reg_code in ("0500", "0400", "0200", "0190", "0150", "0140", "0120", "0110", "0100", "0001", "0000"):
-        reg = (
-            db.query(EfdRegistro)
-            .filter(
-                EfdRegistro.versao_id == int(versao_origem_id),
-                EfdRegistro.reg == reg_code,
-            )
-            .order_by(EfdRegistro.linha.desc())
-            .first()
-        )
-        if reg:
-            registro_id_alvo = getattr(reg, "id", None)
-            linha_ref = int(getattr(reg, "linha", 0) or 0)
-            break
+    registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
+        db,
+        versao_origem_id=versao_origem_id,
+    )
 
-    nome_cta = "Mercadorias"
+    nome_cta = (nome_cta or "Conta ECD").strip()
     linha_nova = f"|0500|01012014|04|A|5|{cod_cta}|{nome_cta}|||"
 
     rv = EfdRevisao(
@@ -350,6 +293,7 @@ def garantir_0500_conta_padrao(
             "motivo": f"Cadastro 0500 necessário para conta contábil padrão ({cod_cta})",
             "cod_cta": cod_cta,
             "nome_cta": nome_cta,
+            "_ordem_bloco0": 500,
         },
         motivo_codigo="CONTRIB_CONTA_0500_V1",
         apontamento_id=apontamento_id,
@@ -357,10 +301,13 @@ def garantir_0500_conta_padrao(
     db.add(rv)
     db.flush()
 
-    print(
-        "[DBG 0500 CRIADO]",
-        {"rv_id": rv.id, "linha_ref": linha_ref, "cod_cta": cod_cta},
-        flush=True,
+    logger.warning(
+        "[0500_CTA_CRIADO] rv_id=%s linha_ref=%s cod_cta=%s nome_cta=%s linha=%s",
+        rv.id,
+        linha_ref,
+        cod_cta,
+        nome_cta,
+        linha_nova,
     )
 
     return cod_cta
@@ -407,6 +354,88 @@ def _existe_0500_conta_padrao_na_versao_ou_revisao(
 
     return False
 
+def _cod_cta_valido_para_0500(cod_cta: str | None) -> bool:
+    cod = str(cod_cta or "").strip().upper()
+    return bool(cod and cod not in {"NAO_APLICAVEL_SO_ICMS", "NAO_APLICAVEL", "SEM_CONTA"})
+
+def resolver_cod_cta_por_ecd_categoria(
+    db: Session,
+    *,
+    empresa_id: int,
+    periodo: str | None = None,
+    categoria: str | None = None,
+) -> dict:
+    categoria = str(categoria or "").strip()
+    if not empresa_id or not categoria:
+        return {}
+    logger.warning(
+        "[0500_CTA_DBG_RESOLVE] inicio empresa=%s periodo=%s categoria=%s",
+        empresa_id,
+        periodo,
+        categoria,
+    )
+
+    q = (
+        db.query(ItemFiscalConsolidado)
+        .filter(
+            ItemFiscalConsolidado.empresa_id == int(empresa_id),
+            ItemFiscalConsolidado.cod_cta.isnot(None),
+            ItemFiscalConsolidado.cod_cta != "",
+            ItemFiscalConsolidado.cod_cta.notin_([
+                "NAO_APLICAVEL_SO_ICMS",
+                "NAO_APLICAVEL",
+                "SEM_CONTA",
+            ]),
+        )
+    )
+
+
+    q = q.filter(
+        (
+            ItemFiscalConsolidado.categoria_ecd == categoria
+        )
+        | (
+            ItemFiscalConsolidado.categoria_catalogo == categoria
+        )
+    )
+
+    item = (
+        q.order_by(
+            ItemFiscalConsolidado.cod_cta_confianca.desc(),
+            ItemFiscalConsolidado.id.desc(),
+        )
+        .first()
+    )
+
+    if not item:
+        logger.warning(
+            "[0500_CTA_DBG_RESOLVE] inicio empresa=%s periodo=%s categoria=%s",
+            empresa_id,
+            periodo,
+            categoria,
+        )
+        logger.warning(
+            "[0500_CTA_DBG_RESOLVE] achou item_cons=%s cod_cta=%s nome=%s categoria_catalogo=%s categoria_ecd=%s confianca=%s",
+            getattr(item, "id", None),
+            getattr(item, "cod_cta", None),
+            getattr(item, "conta_nome", None) or getattr(item, "ecd_conta_nome", None),
+            getattr(item, "categoria_catalogo", None),
+            getattr(item, "categoria_ecd", None),
+            getattr(item, "cod_cta_confianca", None),
+        )
+        return {}
+
+    return {
+        "cod_cta": str(getattr(item, "cod_cta", "") or "").strip(),
+        "nome_cta": (
+            str(getattr(item, "conta_nome", "") or "").strip()
+            or str(getattr(item, "ecd_conta_nome", "") or "").strip()
+            or "Conta ECD"
+        ),
+        "origem": "ITEM_CONSOLIDADO_MESMA_CATEGORIA",
+        "item_fiscal_consolidado_id": int(getattr(item, "id", 0) or 0),
+    }
+
 def _garantir_mestres_para_notas_elegiveis(
     db: Session,
     *,
@@ -428,16 +457,6 @@ def _garantir_mestres_para_notas_elegiveis(
 
     unids_vistas: set[str] = set()
     cod_items_vistos: set[str] = set()
-
-    if "25666" not in cache_mestres["0500"]:
-        garantir_0500_conta_padrao(
-            db,
-            versao_origem_id=versao_origem_id,
-            cod_cta="25666",
-            nome_cta="Conta mercadorias",
-        )
-        cache_mestres["0500"].add("25666")
-        total_0500 += 1
 
     for nf, itens, chave in notas_elegiveis:
         cod_part_nf = _fmt_campo(getattr(nf, "cod_part", None))
@@ -493,6 +512,106 @@ def _garantir_mestres_para_notas_elegiveis(
                     total_0200 += 1
 
                 cod_items_vistos.add(cod_item_item)
+
+            nf_icms_item_id = int(getattr(it, "id", 0) or 0)
+
+            if nf_icms_item_id:
+                item_cons = (
+                    db.query(ItemFiscalConsolidado)
+                    .filter(
+                        ItemFiscalConsolidado.versao_id == int(versao_origem_id),
+                        ItemFiscalConsolidado.nf_icms_item_id == nf_icms_item_id,
+                    )
+                    .first()
+                )
+                logger.warning(
+                    "[0500_CTA_DBG_ITEM] nf_icms_item_id=%s achou_item_cons=%s cod_item=%s desc=%s "
+                    "cod_cta=%s cod_cta_origem=%s categoria_catalogo=%s categoria_ecd=%s periodo=%s",
+                    nf_icms_item_id,
+                    bool(item_cons),
+                    getattr(it, "cod_item", None),
+                    getattr(it, "descricao", None),
+                    getattr(item_cons, "cod_cta", None) if item_cons else None,
+                    getattr(item_cons, "cod_cta_origem", None) if item_cons else None,
+                    getattr(item_cons, "categoria_catalogo", None) if item_cons else None,
+                    getattr(item_cons, "categoria_ecd", None) if item_cons else None,
+                    getattr(item_cons, "periodo", None) if item_cons else None,
+                )
+
+                if item_cons:
+                    cod_cta_real = (
+                            str(getattr(item_cons, "cod_cta", "") or "").strip()
+                            or str(getattr(item_cons, "cod_cta_origem", "") or "").strip()
+                    )
+
+                    nome_cta_real = (
+                            str(getattr(item_cons, "conta_nome", "") or "").strip()
+                            or str(getattr(item_cons, "ecd_conta_nome", "") or "").strip()
+                            or ""
+                    )
+                    categoria_busca = (
+                            str(getattr(item_cons, "categoria_ecd", "") or "").strip()
+                            or str(getattr(item_cons, "categoria_catalogo", "") or "").strip()
+                    )
+
+                    if not categoria_busca:
+                        item_catalogo = {
+                            "descr_compl": (
+                                    str(getattr(item_cons, "descr_item", "") or "").strip()
+                                    or str(getattr(it, "descricao", "") or "").strip()
+                            ),
+                            "cod_item": str(getattr(it, "cod_item", "") or "").strip(),
+                            "ncm": str(getattr(it, "ncm", "") or "").strip(),
+                        }
+
+                        cls_cat = classificar_c170_por_catalogo(
+                            item=item_catalogo,
+                            catalogo=carregar_catalogo_fiscal(db),
+                            dominio=str(getattr(item_cons, "dominio", "")),
+                        )
+                        categoria_busca = str(cls_cat.get("categoria") or "").strip()
+                        if categoria_busca.upper() == "NAOCLASSIFICADO":
+                            categoria_busca = ""
+
+                        logger.warning(
+                            "[0500_CTA_DBG_CATALOGO] nf_icms_item_id=%s categoria=%s origem=%s slug=%s",
+                            nf_icms_item_id,
+                            categoria_busca,
+                            cls_cat.get("origem_classificacao"),
+                            cls_cat.get("slug_match"),
+                        )
+
+                    if not _cod_cta_valido_para_0500(cod_cta_real) and categoria_busca:
+                        res_cta = resolver_cod_cta_por_ecd_categoria(
+                            db,
+                            empresa_id=int(getattr(item_cons, "empresa_id", 0) or 0),
+                            periodo=str(getattr(item_cons, "periodo", "") or ""),
+                            categoria=categoria_busca,
+                        )
+
+                        if isinstance(res_cta, dict):
+                            cod_cta_real = str(res_cta.get("cod_cta") or "").strip()
+                            nome_cta_real = str(res_cta.get("nome_cta") or nome_cta_real or "Conta ECD").strip()
+                        else:
+                            cod_cta_real = str(res_cta or "").strip()
+
+                    logger.warning(
+                        "[0500_CTA_DBG_FINAL] nf_icms_item_id=%s cod_cta_final=%s valido=%s nome_cta=%s ja_no_cache=%s",
+                        nf_icms_item_id,
+                        cod_cta_real,
+                        _cod_cta_valido_para_0500(cod_cta_real),
+                        nome_cta_real,
+                        cod_cta_real in cache_mestres["0500"] if cod_cta_real else None,
+                    )
+                    if _cod_cta_valido_para_0500(cod_cta_real) and cod_cta_real not in cache_mestres["0500"]:
+                        garantir_0500_conta_padrao(
+                            db,
+                            versao_origem_id=versao_origem_id,
+                            cod_cta=cod_cta_real,
+                            nome_cta=nome_cta_real or "Conta ECD",
+                        )
+                        cache_mestres["0500"].add(cod_cta_real)
+                        total_0500 += 1
 
     return {
         "total_0150": total_0150,

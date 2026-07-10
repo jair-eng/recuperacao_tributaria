@@ -15,6 +15,8 @@ class LinhaLogica:
     registro_id: Optional[int] = None
     pai_id: Optional[int] = None
     revisao_id: Optional[int] = None
+    revisao_json: dict | None = None
+    meta: dict | None = None
 
 
     @classmethod
