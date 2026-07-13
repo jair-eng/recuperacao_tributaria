@@ -273,6 +273,6 @@ def classificar_produto_fiscal(
         "cafe": eh_cafe(meta, catalogo),
         "embalagem": eh_embalagem(meta, catalogo),
         "posto_geral": eh_posto_geral(meta, catalogo),
-        "ativo_imobilizado": eh_ativo_imobilizado(meta, catalogo),
+        #"ativo_imobilizado": eh_ativo_imobilizado(meta, catalogo), Precisa verificar a regra correta para ativo imobilizado
         "rastreamento_telemetria": eh_rastreamento_telemetria(meta, catalogo),
     }

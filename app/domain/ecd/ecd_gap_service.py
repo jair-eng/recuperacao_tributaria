@@ -306,7 +306,6 @@ def carregar_linhas_ecd_com_natureza_real(
         )
         .all()
     )
-    print("[DBG CONTAS]", len(contas), flush=True)
 
     linhas: list[dict] = []
 
@@ -320,15 +319,6 @@ def carregar_linhas_ecd_com_natureza_real(
             db,
             categoria=categoria,
             grupo=grupo,
-        )
-        print(
-            "[DBG CAT BUSCA]",
-            "cod_cta=", conta.cod_cta,
-            "categoria=", repr(categoria),
-            "grupo=", repr(grupo),
-            "qtd_catalogo=", len(naturezas_catalogo),
-            "catalogo=", naturezas_catalogo,
-            flush=True,
         )
 
         naturezas_esperadas = []

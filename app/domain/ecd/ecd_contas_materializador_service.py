@@ -53,6 +53,7 @@ def materializar_contas_ecd_i050(
                 cod_cta=cod_cta,
             )
             db.add(existente)
+            db.flush()
 
         existente.arquivo_id = arquivo_id
         existente.linha = _get_attr(conta, "linha", None)

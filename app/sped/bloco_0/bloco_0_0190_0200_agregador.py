@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-from app.db.models import EfdRevisao, NfIcmsBase, NfIcmsItem, EfdRegistro, ItemFiscalConsolidado
-from app.domain.ecd.ecd_conta_classificador_service import classificar_texto_por_natureza_esperada
+from app.db.models import EfdRevisao, NfIcmsBase, NfIcmsItem, EfdRegistro, ItemFiscalConsolidado, Empresa, EfdVersao
+from app.domain.relatorio_executivo.extrair_conta_efd_para_fallback import carregar_contas_0500_local
 from app.icms_ipi.icms_0150_agregador import resolver_ou_criar_0150_por_cnpj, _buscar_0150_logico_por_cnpj, \
     _buscar_0150_logico_por_cod_part, _fmt_campo, _somente_digitos
 from app.icms_ipi.icms_helpers import _campo
@@ -10,8 +10,10 @@ from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_co
 from app.sped.bloco_0.bloco_0_helpers import _norm, _norm_upper, _existe_0190_na_versao, _existe_0200_na_versao
 from typing import Dict, List, Optional
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
+from app.sped.utils_cod_cta import resolver_tipo_conta_por_cenario, resolver_cod_cta_por_catalogo_0500
 from app.utils.classificacao_utils import classificar_c170_por_catalogo
 from app.utils.sped import montar_cache_mestres_logicos
+from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -261,10 +263,14 @@ def garantir_0500_conta_padrao(
     db: Session,
     *,
     versao_origem_id: int,
-    cod_cta: str = "25666",
-    nome_cta: str = "Conta mercadorias",
+    cod_cta: str | None = None,
+    nome_cta: str | None = None,
     apontamento_id: int | None = None,
 ) -> str:
+
+    cod_cta = str(cod_cta or "").strip() or "999999"
+    nome_cta = str(nome_cta or "").strip() or "CONTA CONTABIL A DEFINIR"
+
     if _existe_0500_conta_padrao_na_versao_ou_revisao(
         db,
         versao_origem_id=versao_origem_id,
@@ -274,10 +280,9 @@ def garantir_0500_conta_padrao(
 
     registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
         db,
-        versao_origem_id=versao_origem_id,
-    )
+        versao_origem_id=versao_origem_id,    )
 
-    nome_cta = (nome_cta or "Conta ECD").strip()
+
     linha_nova = f"|0500|01012014|04|A|5|{cod_cta}|{nome_cta}|||"
 
     rv = EfdRevisao(
@@ -356,85 +361,17 @@ def _existe_0500_conta_padrao_na_versao_ou_revisao(
 
 def _cod_cta_valido_para_0500(cod_cta: str | None) -> bool:
     cod = str(cod_cta or "").strip().upper()
-    return bool(cod and cod not in {"NAO_APLICAVEL_SO_ICMS", "NAO_APLICAVEL", "SEM_CONTA"})
 
-def resolver_cod_cta_por_ecd_categoria(
-    db: Session,
-    *,
-    empresa_id: int,
-    periodo: str | None = None,
-    categoria: str | None = None,
-) -> dict:
-    categoria = str(categoria or "").strip()
-    if not empresa_id or not categoria:
-        return {}
-    logger.warning(
-        "[0500_CTA_DBG_RESOLVE] inicio empresa=%s periodo=%s categoria=%s",
-        empresa_id,
-        periodo,
-        categoria,
+    return bool(
+        cod
+        and cod not in {
+            "0000",
+            "NAO_APLICAVEL_SO_ICMS",
+            "NAO_APLICAVEL",
+            "SEM_CONTA",
+        }
     )
 
-    q = (
-        db.query(ItemFiscalConsolidado)
-        .filter(
-            ItemFiscalConsolidado.empresa_id == int(empresa_id),
-            ItemFiscalConsolidado.cod_cta.isnot(None),
-            ItemFiscalConsolidado.cod_cta != "",
-            ItemFiscalConsolidado.cod_cta.notin_([
-                "NAO_APLICAVEL_SO_ICMS",
-                "NAO_APLICAVEL",
-                "SEM_CONTA",
-            ]),
-        )
-    )
-
-
-    q = q.filter(
-        (
-            ItemFiscalConsolidado.categoria_ecd == categoria
-        )
-        | (
-            ItemFiscalConsolidado.categoria_catalogo == categoria
-        )
-    )
-
-    item = (
-        q.order_by(
-            ItemFiscalConsolidado.cod_cta_confianca.desc(),
-            ItemFiscalConsolidado.id.desc(),
-        )
-        .first()
-    )
-
-    if not item:
-        logger.warning(
-            "[0500_CTA_DBG_RESOLVE] inicio empresa=%s periodo=%s categoria=%s",
-            empresa_id,
-            periodo,
-            categoria,
-        )
-        logger.warning(
-            "[0500_CTA_DBG_RESOLVE] achou item_cons=%s cod_cta=%s nome=%s categoria_catalogo=%s categoria_ecd=%s confianca=%s",
-            getattr(item, "id", None),
-            getattr(item, "cod_cta", None),
-            getattr(item, "conta_nome", None) or getattr(item, "ecd_conta_nome", None),
-            getattr(item, "categoria_catalogo", None),
-            getattr(item, "categoria_ecd", None),
-            getattr(item, "cod_cta_confianca", None),
-        )
-        return {}
-
-    return {
-        "cod_cta": str(getattr(item, "cod_cta", "") or "").strip(),
-        "nome_cta": (
-            str(getattr(item, "conta_nome", "") or "").strip()
-            or str(getattr(item, "ecd_conta_nome", "") or "").strip()
-            or "Conta ECD"
-        ),
-        "origem": "ITEM_CONSOLIDADO_MESMA_CATEGORIA",
-        "item_fiscal_consolidado_id": int(getattr(item, "id", 0) or 0),
-    }
 
 def _garantir_mestres_para_notas_elegiveis(
     db: Session,
@@ -457,6 +394,23 @@ def _garantir_mestres_para_notas_elegiveis(
 
     unids_vistas: set[str] = set()
     cod_items_vistos: set[str] = set()
+
+    versao = (
+        db.query(EfdVersao)
+        .filter(EfdVersao.id == int(versao_origem_id))
+        .first()
+    )
+
+    empresa_id = int(getattr(versao, "empresa_id", 0) or 0)
+    empresa = (db.query(Empresa)
+        .filter(Empresa.id == empresa_id)
+        .first()
+    )
+
+    cnpj_empresa = _somente_digitos(getattr(empresa, "cnpj", None))
+
+    contas_0500 = carregar_contas_0500_local(caminho_catalogo=Path(r"C:\Sped\saida\catalogo_0500_contrib.json"),cnpj_empresa=cnpj_empresa,)
+
 
     for nf, itens, chave in notas_elegiveis:
         cod_part_nf = _fmt_campo(getattr(nf, "cod_part", None))
@@ -573,6 +527,7 @@ def _garantir_mestres_para_notas_elegiveis(
                         if categoria_busca.upper() == "NAOCLASSIFICADO":
                             categoria_busca = ""
 
+                        logger.warning("[ITEM] categoria=%s", categoria_busca)
                         logger.warning(
                             "[0500_CTA_DBG_CATALOGO] nf_icms_item_id=%s categoria=%s origem=%s slug=%s",
                             nf_icms_item_id,
@@ -582,18 +537,35 @@ def _garantir_mestres_para_notas_elegiveis(
                         )
 
                     if not _cod_cta_valido_para_0500(cod_cta_real) and categoria_busca:
-                        res_cta = resolver_cod_cta_por_ecd_categoria(
-                            db,
-                            empresa_id=int(getattr(item_cons, "empresa_id", 0) or 0),
-                            periodo=str(getattr(item_cons, "periodo", "") or ""),
+
+                        fundamentos = getattr(item_cons, "fundamento_legal", None)
+
+                        tipo_conta = resolver_tipo_conta_por_cenario(
+                            dominio=getattr(item_cons, "dominio", ""),
                             categoria=categoria_busca,
+                            fundamentos=fundamentos,
                         )
 
-                        if isinstance(res_cta, dict):
-                            cod_cta_real = str(res_cta.get("cod_cta") or "").strip()
-                            nome_cta_real = str(res_cta.get("nome_cta") or nome_cta_real or "Conta ECD").strip()
-                        else:
-                            cod_cta_real = str(res_cta or "").strip()
+                        conta_resolvida = resolver_cod_cta_por_catalogo_0500(
+                            tipo_conta=tipo_conta,
+                            categoria=categoria_busca,
+                            contas_0500=contas_0500,
+                            uf_filial=None,
+                        )
+
+                        cod_cta_real = str(conta_resolvida.get("cod_cta") or "0000").strip()
+                        nome_cta_real = str(
+                            conta_resolvida.get("nome_cta") or "CONTA NAO RESOLVIDA"
+                        ).strip()
+
+                        logger.warning(
+                            "[0500_CTA_RESOLVE] categoria=%s  cod_cta=%s nome=%s origem=%s",
+                            categoria_busca,
+
+                            cod_cta_real,
+                            nome_cta_real,
+                            conta_resolvida.get("origem_resolucao"),
+                        )
 
                     logger.warning(
                         "[0500_CTA_DBG_FINAL] nf_icms_item_id=%s cod_cta_final=%s valido=%s nome_cta=%s ja_no_cache=%s",
@@ -603,12 +575,20 @@ def _garantir_mestres_para_notas_elegiveis(
                         nome_cta_real,
                         cod_cta_real in cache_mestres["0500"] if cod_cta_real else None,
                     )
-                    if _cod_cta_valido_para_0500(cod_cta_real) and cod_cta_real not in cache_mestres["0500"]:
+
+                    cod_cta_real = cod_cta_real if _cod_cta_valido_para_0500(cod_cta_real) else "999999"
+                    nome_cta_real = nome_cta_real or (
+                        "CONTA CONTABIL A DEFINIR"
+                        if cod_cta_real == "999999"
+                        else "Conta ECD"
+                    )
+
+                    if cod_cta_real not in cache_mestres["0500"]:
                         garantir_0500_conta_padrao(
                             db,
                             versao_origem_id=versao_origem_id,
                             cod_cta=cod_cta_real,
-                            nome_cta=nome_cta_real or "Conta ECD",
+                            nome_cta=nome_cta_real,
                         )
                         cache_mestres["0500"].add(cod_cta_real)
                         total_0500 += 1

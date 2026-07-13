@@ -19,6 +19,7 @@ from app.domain.relatorio_executivo.contexto_local_ecd_efd import montar_context
 from app.domain.relatorio_executivo.contexto_recuperacao_local import montar_contexto_recuperacao_local
 from app.domain.relatorio_executivo.contrib_loader_local import carregar_contrib_local
 from app.domain.relatorio_executivo.exportar_relatorio_ecd_efd import exportar_relatorio_executivo_ecd_efd_por_ctx
+from app.domain.relatorio_executivo.extrair_conta_efd_para_fallback import gerar_catalogo_0500_local
 from app.domain.sped.maps.reg0150_map import montar_mapa_participantes_0150
 from app.utils.sped import listar_txt
 
@@ -52,6 +53,26 @@ def gerar_relatorio_executivo_local(
         raise FileNotFoundError(f"Nenhum arquivo .txt encontrado em: {pasta_contrib}")
 
     caminho_saida.parent.mkdir(parents=True, exist_ok=True)
+
+    caminho_catalogo_0500 = (
+            caminho_saida.parent / "catalogo_0500_contrib.json"
+    )
+
+    resumo_0500 = gerar_catalogo_0500_local(
+        arquivos_contrib=arquivos_contrib,
+        caminho_saida=caminho_catalogo_0500,
+    )
+
+    print(
+        "[CATALOGO 0500]",
+        "arquivos_lidos=", resumo_0500["arquivos_lidos"],
+        "linhas_0500=", resumo_0500["linhas_0500"],
+        "contas_unicas=", resumo_0500["contas_unicas"],
+        "empresas=", resumo_0500["empresas"],
+        "substituidos=", resumo_0500["registros_substituidos"],
+        "saida=", resumo_0500["arquivo_saida"],
+        flush=True,
+    )
 
     print("========== RELATÓRIO EXECUTIVO LOCAL ==========")
     print("empresa_id:", empresa_id)
