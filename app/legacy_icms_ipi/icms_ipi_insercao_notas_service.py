@@ -611,11 +611,27 @@ def _inserir_bloco_nf_icms_na_efd_v2_linhas_novas(
         qtd_c170,
         [int(getattr(it, "id", 0) or 0) for it in itens],
     )
+    rv_c100_sum_id = consolidar_totais_no_proprio_c100_inserido(
+        db,
+        versao_origem_id=versao_origem_id,
+        versao_final_id=None,
+        revisao_c100_id=int(rv.id),
+    )
+
+    logger.warning(
+        "[INSERIR_NF_V2_BLOCO][C100_CONSOLIDADO] "
+        "nf=%s chave=%s revisao_bloco=%s revisao_sum=%s",
+        nf_id,
+        chave,
+        rv.id,
+        rv_c100_sum_id,
+    )
 
     return {
         "c100_inserido": 1,
         "c170_inseridos": max(0, len(linhas_novas) - 1),
         "revisao_c100_id": int(rv.id),
+        "revisao_c100_sum_id": rv_c100_sum_id,
         "registro_id_fim_bloco": registro_id_alvo,
         "linha_fim_bloco": linha_ref_alvo,
         "revisao_fim_bloco_id": int(rv.id),

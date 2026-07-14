@@ -165,6 +165,7 @@ def resolver_tipo_conta_por_cenario(
             "TRANSP_INSUMO_GASOLINA",
             "TRANSP_INSUMO_ETANOL",
             "TRANSP_INSUMO_LUBRIFICANTE",
+            "TRANSP_INSUMO_ARLA32",
         }:
             return "COMBUSTIVEL"
 

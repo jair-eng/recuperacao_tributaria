@@ -100,6 +100,17 @@ def cenario_insumo_transportadora(
         ]
         return out
 
+    if produto["arla32"]:
+        out["ativo"] = True
+        out["cenario"] = "TRANSP_INSUMO_ARLA32"
+        out["fundamento_legal"] = ["TRANSP_INSUMO_ARLA32"]
+        out["justificativa"] = [
+            "entrada_insumo",
+            "arla32",
+            "dominio_transportadora",
+        ]
+        return out
+
     if produto["lubrificante"]:
         out["ativo"] = True
         out["cenario"] = "TRANSP_INSUMO_LUBRIFICANTE"
@@ -133,16 +144,7 @@ def cenario_insumo_transportadora(
         ]
         return out
 
-    if produto["arla32"]:
-        out["ativo"] = True
-        out["cenario"] = "TRANSP_INSUMO_ARLA32"
-        out["fundamento_legal"] = ["TRANSP_INSUMO_ARLA32"]
-        out["justificativa"] = [
-            "entrada_insumo",
-            "arla32",
-            "dominio_transportadora",
-        ]
-        return out
+
 
     if produto["manutencao_veicular"] or produto["autopeca"]:
         out["ativo"] = True

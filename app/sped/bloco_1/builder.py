@@ -6,6 +6,7 @@ from typing import Any, List, Tuple
 from app.sped.blocoM.m_utils import _clean_sped_line, _reg_of_line
 from app.sped.bloco_1.reg1100 import linha_1100
 from app.sped.bloco_1.reg1500 import linha_1500
+from app.sped.bloco_1.utils_1500 import yyyymm_to_mmyyyy
 from app.utils.numbers import dec_any, q2
 
 
@@ -148,24 +149,28 @@ def _estoque_attr(est: Any, nome: str, padrao: Any = None) -> Any:
 def montar_bloco_1_com_estoque_v2(
     *,
     linhas_sped: List[str],
-    periodo_atual: str,
+    periodo_atual: str,  # YYYYMM
     estoques_v2: List[Any],
 ) -> List[str]:
     """
-    Monta Bloco 1 usando a tabela credito_estoque_v2 como fonte.
+    Monta o Bloco 1 usando credito_estoque_v2.
 
-    Regra atual:
-      - preserva todos os registros originais do cliente;
+    Regras:
+      - periodo_atual e períodos do estoque são comparados em YYYYMM;
+      - o período escrito nos registros 1100/1500 é convertido para MMYYYY;
+      - preserva os registros originais;
       - remove apenas 1001/1990 antigos;
-      - adiciona 1100/1500 V2 se não existir mesma chave;
-      - se existir mesma chave, soma o saldo V2 na linha original;
-      - não consome crédito: campo 11 permanece original/zero;
-      - atualiza 1990.
-
-    Observação:
-      periodo_atual deve seguir o mesmo padrão do SPED usado nos registros:
-      normalmente MMYYYY para 1100/1500.
+      - insere ou soma 1100/1500;
+      - recompõe o 1990.
     """
+
+    periodo_atual = str(periodo_atual or "").strip()
+
+    if len(periodo_atual) != 6:
+        raise ValueError(
+            f"periodo_atual inválido em montar_bloco_1_com_estoque_v2: "
+            f"{periodo_atual!r}; esperado YYYYMM"
+        )
 
     parte_limpa = _limpar_parte_bloco_1(linhas_sped)
 
@@ -183,39 +188,66 @@ def montar_bloco_1_com_estoque_v2(
         linhas_resultado.append(linha_limpa)
 
     for est in estoques_v2 or []:
-        periodo_origem = str(_estoque_attr(est, "periodo_origem", "") or "").strip()
-        periodo_escrituracao = str(_estoque_attr(est, "periodo_escrituracao", "") or "").strip()
+        periodo_origem = str(
+            _estoque_attr(est, "periodo_origem", "") or ""
+        ).strip()
 
-        cod_cred = str(_estoque_attr(est, "cod_cred", "101") or "101").strip()
-        orig_cred = str(_estoque_attr(est, "orig_cred", "01") or "01").strip()
+        periodo_escrituracao = str(
+            _estoque_attr(est, "periodo_escrituracao", "") or ""
+        ).strip()
 
-        saldo_pis = dec_any(_estoque_attr(est, "saldo_pis", Decimal("0")))
-        saldo_cofins = dec_any(_estoque_attr(est, "saldo_cofins", Decimal("0")))
+        cod_cred = str(
+            _estoque_attr(est, "cod_cred", "101") or "101"
+        ).strip()
 
-        if not periodo_origem:
+        orig_cred = str(
+            _estoque_attr(est, "orig_cred", "01") or "01"
+        ).strip()
+
+        saldo_pis = dec_any(
+            _estoque_attr(est, "saldo_pis", Decimal("0"))
+        )
+        saldo_cofins = dec_any(
+            _estoque_attr(est, "saldo_cofins", Decimal("0"))
+        )
+
+        if not periodo_origem or len(periodo_origem) != 6:
             continue
 
-        # Crédito só aparece no Bloco 1 a partir do mês seguinte.
+        # Comparações sempre em YYYYMM.
         if periodo_origem >= periodo_atual:
             continue
 
-        if periodo_escrituracao and periodo_escrituracao > periodo_atual:
+        if (
+            periodo_escrituracao
+            and periodo_escrituracao > periodo_atual
+        ):
             continue
 
+        # Formato utilizado dentro das linhas 1100/1500.
+        periodo_origem_mmaaaa = yyyymm_to_mmyyyy(periodo_origem)
+
         if saldo_pis > 0:
-            chave_1100 = ("1100", periodo_origem, orig_cred, cod_cred)
+            chave_1100 = (
+                "1100",
+                periodo_origem_mmaaaa,
+                orig_cred,
+                cod_cred,
+            )
 
             if chave_1100 in mapa_idx_por_chave:
                 idx = mapa_idx_por_chave[chave_1100]
-                linhas_resultado[idx] = _somar_saldo_v2_em_linha_1100_1500(
-                    linhas_resultado[idx],
-                    saldo_pis,
+                linhas_resultado[idx] = (
+                    _somar_saldo_v2_em_linha_1100_1500(
+                        linhas_resultado[idx],
+                        saldo_pis,
+                    )
                 )
             else:
                 mapa_idx_por_chave[chave_1100] = len(linhas_resultado)
                 linhas_resultado.append(
                     linha_1100(
-                        periodo=periodo_origem,
+                        periodo=periodo_origem_mmaaaa,
                         cod_cont=cod_cred,
                         valor=saldo_pis,
                         orig_cred=orig_cred,
@@ -223,19 +255,26 @@ def montar_bloco_1_com_estoque_v2(
                 )
 
         if saldo_cofins > 0:
-            chave_1500 = ("1500", periodo_origem, orig_cred, cod_cred)
+            chave_1500 = (
+                "1500",
+                periodo_origem_mmaaaa,
+                orig_cred,
+                cod_cred,
+            )
 
             if chave_1500 in mapa_idx_por_chave:
                 idx = mapa_idx_por_chave[chave_1500]
-                linhas_resultado[idx] = _somar_saldo_v2_em_linha_1100_1500(
-                    linhas_resultado[idx],
-                    saldo_cofins,
+                linhas_resultado[idx] = (
+                    _somar_saldo_v2_em_linha_1100_1500(
+                        linhas_resultado[idx],
+                        saldo_cofins,
+                    )
                 )
             else:
                 mapa_idx_por_chave[chave_1500] = len(linhas_resultado)
                 linhas_resultado.append(
                     linha_1500(
-                        periodo=periodo_origem,
+                        periodo=periodo_origem_mmaaaa,
                         cod_cont=cod_cred,
                         valor=saldo_cofins,
                         orig_cred=orig_cred,
@@ -247,5 +286,4 @@ def montar_bloco_1_com_estoque_v2(
     bloco.append(f"|1990|{len(bloco) + 1}|")
 
     return bloco
-
 

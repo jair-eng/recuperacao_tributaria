@@ -403,16 +403,26 @@ def _resolver_v2_c100_c170_por_nf(
 
         assinaturas = {
             (
-                x["meta"].get("codigo_cenario") or x["meta"].get("cenario") or x["meta"].get("contexto_credito"),
-                x["meta"].get("cod_cred") or x["meta"].get("tipo_credito_codigo"),
-                x["meta"].get("nat_bc_cred") or x["meta"].get("base_credito_codigo") or x["meta"].get("cod_base_credito"),
+                x["meta"].get("cod_cred")
+                or x["meta"].get("tipo_credito_codigo"),
+
+                x["meta"].get("nat_bc_cred")
+                or x["meta"].get("base_credito_codigo")
+                or x["meta"].get("cod_base_credito"),
             )
             for x in itens_ctx
         }
 
         if len(assinaturas) != 1:
             erros += len(apontamentos_grupo)
-            logger.warning("[V2 LOTE] NF com múltiplos enquadramentos | nf_id=%s assinaturas=%s", nf_id, assinaturas)
+
+            logger.warning(
+                "[V2 LOTE] NF com tratamentos fiscais incompatíveis | "
+                "nf_id=%s chave=%s assinaturas=%s",
+                nf_id,
+                chave,
+                assinaturas,
+            )
             continue
 
         meta_base = itens_ctx[0]["meta"]
@@ -474,6 +484,30 @@ def _resolver_v2_c100_c170_por_nf(
                 int(getattr(x["nf_item"], "id", 0) or 0),
             ),
         )
+        # Transporta cenário/fundamento do apontamento até a resolução do 0500.
+        # É atributo transitório: não altera o banco nem o bloco de inserção.
+        for x in itens_ctx:
+            meta_item = x["meta"] or {}
+            nf_item = x["nf_item"]
+
+            fundamentos_item = (
+                    meta_item.get("fundamento_legal")
+                    or meta_item.get("codigo_cenario")
+                    or meta_item.get("cenario")
+                    or meta_item.get("contexto_credito")
+            )
+
+            setattr(
+                nf_item,
+                "_fundamentos_cenario_v2",
+                fundamentos_item,
+            )
+            logger.warning(
+                "[V2 LOTE FUNDAMENTO ITEM] nf_item=%s descricao=%s fundamento=%s",
+                getattr(nf_item, "id", None),
+                getattr(nf_item, "descricao", None),
+                fundamentos_item,
+            )
 
         itens = [x["nf_item"] for x in itens_ctx]
 

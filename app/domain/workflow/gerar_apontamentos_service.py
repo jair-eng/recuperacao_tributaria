@@ -268,6 +268,17 @@ def gerar_apontamentos_por_contexto(
                 meta_diag.get("reg_ancora")
                 or meta_item.get("reg_ancora")
         )
+        fundamento_legal = (
+                meta_diag.get("fundamento_legal")
+                or cenario.get("fundamento_legal")
+                or []
+        )
+
+        justificativa_cenario = (
+                meta_diag.get("justificativa")
+                or cenario.get("justificativa")
+                or []
+        )
 
         if not tipo_normalizacao and status_cruzamento == "SO_ICMS":
             tipo_normalizacao = (
@@ -326,6 +337,9 @@ def gerar_apontamentos_por_contexto(
             "cod_base_credito": nat_bc_cred,
             "contexto_credito": codigo_cenario,
             "natureza_credito_m": nat_bc_cred,
+
+            "fundamento_legal": fundamento_legal,
+            "justificativa_cenario": justificativa_cenario,
         }
         meta_item = getattr(item, "meta", None) or {}
         novos_apontamentos.append(

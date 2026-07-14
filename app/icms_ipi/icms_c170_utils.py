@@ -51,7 +51,10 @@ def montar_linha_c170_de_icms(
     cst_icms = getattr(item, "cst_icms", None)
     aliq_icms = getattr(item, "aliq_icms", None)
     cod_nat = getattr(item, "cod_nat", None)
-    cod_cta = getattr(item, "cod_cta", None)
+    cod_cta = (
+            getattr(item, "_cod_cta_resolvido_v2", None)
+            or getattr(item, "cod_cta", None)
+    )
 
     cst_pis_credito, cst_cofins_credito = resolver_cst_credito_por_dominio(
         dominio=dominio,

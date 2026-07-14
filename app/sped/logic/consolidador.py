@@ -2,7 +2,7 @@ from app.db.models.efd_registro import EfdRegistro
 from app.db.models.efd_revisao import EfdRevisao
 from app.db.models.efd_versao import EfdVersao
 
-from app.Legacy.fiscal.dto import RegistroFiscalDTO
+from app.utils.numbers import q2,dec_any
 from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.sped.blocoC.c100_utils import patch_c100_totais_imposto
 from app.sped.blocoC.c170_utils import _parse_linha_sped_to_reg_dados, _parse_sped_float
@@ -12,6 +12,11 @@ import os
 from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func,or_
 import re
+import logging
+
+from app.utils.sped import preview_linha_sped
+
+logger = logging.getLogger(__name__)
 
 CPF_RE = re.compile(r"^\d{11}$")
 
@@ -619,6 +624,7 @@ def _eh_item_cafe_match(item: Dict[str, Any]) -> bool:
     texto = f"{descricao} {cod_item}"
     return "CAFE" in texto or "CAFÉ" in texto
 
+
 def consolidar_totais_no_proprio_c100_inserido(
     db: Session,
     *,
@@ -635,8 +641,23 @@ def consolidar_totais_no_proprio_c100_inserido(
     if not rv_c100:
         return None
 
-    revisao_json = dict(getattr(rv_c100, "revisao_json", None) or {})
-    linha_nova = str(revisao_json.get("linha_nova") or "")
+    revisao_json = dict(rv_c100.revisao_json or {})
+
+    if "linha_nova" in revisao_json:
+
+        linha_nova = revisao_json["linha_nova"]
+        formato = "ANTIGO"
+    elif "linhas_novas" in revisao_json:
+
+        linhas = list(revisao_json["linhas_novas"] or [])
+        if not linhas:
+            return None
+
+        linha_nova = linhas[0]
+        formato = "NOVO"
+
+    else:
+        return None
     if not linha_nova.startswith("|C100|"):
         return None
 
@@ -646,10 +667,48 @@ def consolidar_totais_no_proprio_c100_inserido(
         versao_final_id=versao_final_id,
         revisao_c100_id=int(revisao_c100_id),
     )
+    logger.warning(
+        "[C100_CONSOLIDA] revisao=%s pis=%s cofins=%s",
+        revisao_c100_id,
+        total_pis,
+        total_cofins,
+    )
 
     reg, dados_c100 = _parse_linha_sped_to_reg_dados(linha_nova)
     if reg != "C100":
         return None
+    ###testar antes
+    total_vl_merc = Decimal("0.00")
+
+    if formato == "NOVO":
+        for linha_filho in linhas[1:]:
+            reg_filho, dados_filho = _parse_linha_sped_to_reg_dados(
+                str(linha_filho or "")
+            )
+
+            if reg_filho != "C170":
+                continue
+
+            total_vl_merc += dec_any(
+                dados_filho[5] if len(dados_filho) > 5 else None
+            )
+
+        total_vl_merc = q2(total_vl_merc)
+
+        logger.warning(
+            "[C100_CONSOLIDA][VL_MERC] "
+            "revisao=%s formato=%s "
+            "vl_merc_antes=%s vl_merc_soma_c170=%s",
+            revisao_c100_id,
+            formato,
+            dados_c100[14] if len(dados_c100) > 14 else None,
+            total_vl_merc,
+        )
+
+        dados_c100[14] = str(total_vl_merc).replace(".", ",")
+
+    ####
+
 
     campos_atualizados = patch_c100_totais_imposto(
         dados_c100,
@@ -661,13 +720,23 @@ def consolidar_totais_no_proprio_c100_inserido(
 
     nova_linha = "|" + "|".join(["C100"] + campos_atualizados) + "|"
 
-    revisao_json["linha_nova"] = nova_linha
-    revisao_json["totais_consolidados_auto"] = {
-        "vl_pis": str(total_pis),
-        "vl_cofins": str(total_cofins),
-        "origem": "soma_c170_overlay_por_revisao_c100",
-    }
-
+    if formato == "NOVO":
+        linhas[0] = nova_linha
+        revisao_json["linhas_novas"] = linhas
+    else:
+        revisao_json["linha_nova"] = nova_linha
+        revisao_json["totais_consolidados_auto"] = {
+            "vl_pis": str(total_pis),
+            "vl_cofins": str(total_cofins),
+            "origem": "soma_c170_overlay_por_revisao_c100",
+        }
+    logger.warning(
+        "[C100_CONSOLIDA] revisao=%s formato=%s pis=%s cofins=%s",
+        revisao_c100_id,
+        formato,
+        total_pis,
+        total_cofins,
+    )
     rv_c100.revisao_json = revisao_json
     db.add(rv_c100)
     db.flush()

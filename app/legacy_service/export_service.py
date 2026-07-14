@@ -597,7 +597,7 @@ def exportar_sped(
 
         bloco_1_override = montar_bloco_1_com_estoque_v2(
             linhas_sped=linhas_bloco_1_originais,
-            periodo_atual=periodo_atual_mmaaaa,
+            periodo_atual=periodo_atual,
             estoques_v2=estoques_v2,
         )
 

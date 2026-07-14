@@ -10,7 +10,8 @@ from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_co
 from app.sped.bloco_0.bloco_0_helpers import _norm, _norm_upper, _existe_0190_na_versao, _existe_0200_na_versao
 from typing import Dict, List, Optional
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
-from app.sped.utils_cod_cta import resolver_tipo_conta_por_cenario, resolver_cod_cta_por_catalogo_0500
+from app.sped.utils_cod_cta import resolver_tipo_conta_por_cenario, resolver_cod_cta_por_catalogo_0500, \
+    _tipo_conta_0500, _unidade_conta_0500
 from app.utils.classificacao_utils import classificar_c170_por_catalogo
 from app.utils.sped import montar_cache_mestres_logicos
 from pathlib import Path
@@ -535,15 +536,39 @@ def _garantir_mestres_para_notas_elegiveis(
                             cls_cat.get("origem_classificacao"),
                             cls_cat.get("slug_match"),
                         )
+                    fundamentos = (getattr(it, "_fundamentos_cenario_v2", None)
+                                   or getattr(item_cons, "fundamento_legal", None)
+                                   )
 
-                    if not _cod_cta_valido_para_0500(cod_cta_real) and categoria_busca:
-
-                        fundamentos = getattr(item_cons, "fundamento_legal", None)
+                    if not _cod_cta_valido_para_0500(cod_cta_real) and (categoria_busca or fundamentos):
 
                         tipo_conta = resolver_tipo_conta_por_cenario(
                             dominio=getattr(item_cons, "dominio", ""),
                             categoria=categoria_busca,
                             fundamentos=fundamentos,
+                        )
+                        logger.warning(
+                            "[0500_CTA_DBG_TIPO] nf_icms_item_id=%s cod_item=%s descricao=%s "
+                            "categoria=%s fundamentos=%s tipo_conta=%s contas_0500=%s",
+                            nf_icms_item_id,
+                            getattr(it, "cod_item", None),
+                            getattr(it, "descricao", None),
+                            categoria_busca,
+                            fundamentos,
+                            tipo_conta,
+                            [
+                                {
+                                    "cod_cta": conta.get("cod_cta"),
+                                    "nome_cta": conta.get("nome_cta"),
+                                    "tipo_detectado": _tipo_conta_0500(
+                                        conta.get("nome_cta")
+                                    ),
+                                    "unidade_detectada": _unidade_conta_0500(
+                                        conta.get("nome_cta")
+                                    ),
+                                }
+                                for conta in contas_0500
+                            ],
                         )
 
                         conta_resolvida = resolver_cod_cta_por_catalogo_0500(
@@ -559,9 +584,11 @@ def _garantir_mestres_para_notas_elegiveis(
                         ).strip()
 
                         logger.warning(
-                            "[0500_CTA_RESOLVE] categoria=%s  cod_cta=%s nome=%s origem=%s",
+                            "[0500_CTA_DBG_RESOLUCAO] nf_icms_item_id=%s categoria=%s "
+                            "tipo_conta=%s cod_cta=%s nome_cta=%s origem=%s",
+                            nf_icms_item_id,
                             categoria_busca,
-
+                            tipo_conta,
                             cod_cta_real,
                             nome_cta_real,
                             conta_resolvida.get("origem_resolucao"),
@@ -580,8 +607,11 @@ def _garantir_mestres_para_notas_elegiveis(
                     nome_cta_real = nome_cta_real or (
                         "CONTA CONTABIL A DEFINIR"
                         if cod_cta_real == "999999"
-                        else "Conta ECD"
+                        else "Conta Contabil"
                     )
+                    # Transporta a mesma conta usada no 0500 para a montagem do C170.
+                    # Atributo transitório: não altera a tabela nf_icms_item.
+                    setattr(it, "_cod_cta_resolvido_v2", cod_cta_real)
 
                     if cod_cta_real not in cache_mestres["0500"]:
                         garantir_0500_conta_padrao(

@@ -17,7 +17,7 @@ CENARIOS_FISCAIS = [
     cenario_insumo_transportadora,
     cenario_cafe,
     cenario_lc192,
-    cenario_ativo_imobilizado,
+    #cenario_ativo_imobilizado,
 ]
 
 

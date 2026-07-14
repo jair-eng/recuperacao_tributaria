@@ -66,6 +66,7 @@ SLUGS_C170_POR_DOMINIO = {
             "NCM_ADITIVOS_FLUIDOS",
             "NCM_GASOLINA",
             "DESC_DIESEL",
+            "DESC_GASOLINA",
             "DESC_ETANOL",
             "TRANSP_DESC_COMBUSTIVEL",
             "TRANSP_DESC_LUBRIFICANTES",
