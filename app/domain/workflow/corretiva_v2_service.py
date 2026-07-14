@@ -190,6 +190,15 @@ def _aplicar_corretiva_so_icms_v2(
         or getattr(item, "base_credito_codigo", None)
         or getattr(item, "cod_base_credito", None)
     )
+    cst_pis_destino = (
+            meta.get("cst_pis_destino")
+            or enq.get("cst_pis_destino")
+    )
+
+    cst_cofins_destino = (
+            meta.get("cst_cofins_destino")
+            or enq.get("cst_cofins_destino")
+    )
 
     if not cod_cred or not nat_bc_cred:
         logger.warning(
@@ -251,6 +260,8 @@ def _aplicar_corretiva_so_icms_v2(
             linha_ref=linha_ref,
             item_icms=nf_item,
             contexto=contexto,
+            cst_pis_destino=cst_pis_destino,
+            cst_cofins_destino=cst_cofins_destino,
             aliq_pis=aliq_pis,
             aliq_cofins=aliq_cofins,
             cod_cred=cod_cred,

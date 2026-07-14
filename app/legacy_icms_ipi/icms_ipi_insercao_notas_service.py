@@ -483,6 +483,8 @@ def _inserir_bloco_nf_icms_na_efd_v2_linhas_novas(
     acao_inicial: str,
     apontamento_id: int | None = None,
     contexto: str | None = None,
+    cst_pis_destino: str | None = None,
+    cst_cofins_destino: str | None = None,
     aliq_pis: str | None = None,
     aliq_cofins: str | None = None,
     cod_cred: str | None = None,
@@ -494,8 +496,12 @@ def _inserir_bloco_nf_icms_na_efd_v2_linhas_novas(
     dominio = resolver_dominio_por_versao(db, versao_origem_id) or DOM_GERAL
 
     logger.warning(
-        "[INSERIR_NF_V2_BLOCO][START] versao=%s nf=%s chave=%s itens=%s dominio=%s "
-        "ancora=(registro_id=%s linha=%s acao=%s) contexto=%s cod_cred=%s nat=%s aliq_pis=%s aliq_cofins=%s apontamento=%s",
+        "[INSERIR_NF_V2_BLOCO][START] "
+        "versao=%s nf=%s chave=%s itens=%s dominio=%s "
+        "ancora=(registro_id=%s linha=%s acao=%s) "
+        "contexto=%s cod_cred=%s nat=%s "
+        "cst_pis=%s cst_cofins=%s "
+        "aliq_pis=%s aliq_cofins=%s apontamento=%s",
         versao_origem_id,
         nf_id,
         chave,
@@ -507,6 +513,8 @@ def _inserir_bloco_nf_icms_na_efd_v2_linhas_novas(
         contexto,
         cod_cred,
         nat_bc_cred,
+        cst_pis_destino,
+        cst_cofins_destino,
         aliq_pis,
         aliq_cofins,
         apontamento_id,
@@ -532,6 +540,8 @@ def _inserir_bloco_nf_icms_na_efd_v2_linhas_novas(
             it,
             dominio=dominio,
             contexto=contexto,
+            cst_pis_destino=cst_pis_destino,
+            cst_cofins_destino=cst_cofins_destino,
             aliq_pis=aliq_pis,
             aliq_cofins=aliq_cofins,
         )
@@ -586,6 +596,8 @@ def _inserir_bloco_nf_icms_na_efd_v2_linhas_novas(
             "contexto": contexto,
             "cod_cred": cod_cred,
             "nat_bc_cred": nat_bc_cred,
+            "cst_pis_destino": cst_pis_destino,
+            "cst_cofins_destino": cst_cofins_destino,
             "aliq_pis": aliq_pis,
             "aliq_cofins": aliq_cofins,
         },
@@ -757,13 +769,18 @@ def inserir_notas_icms_ausentes_na_efd_v2(
         contexto = item.get("contexto")
         cod_cred = item.get("cod_cred")
         nat_bc_cred = item.get("nat_bc_cred")
+        cst_pis_destino = item.get("cst_pis_destino")
+        cst_cofins_destino = item.get("cst_cofins_destino")
         aliq_pis = item.get("aliq_pis")
         aliq_cofins = item.get("aliq_cofins")
         apontamento_id = item.get("apontamento_id")
 
         logger.warning(
-            "[INSERIR_NF_V2][NF_START] nf=%s chave=%s num_doc=%s serie=%s itens=%s "
-            "ancora_antes=(%s,%s,%s) contexto=%s cod_cred=%s nat=%s apontamento=%s",
+            "[INSERIR_NF_V2][NF_START] "
+            "nf=%s chave=%s num_doc=%s serie=%s itens=%s "
+            "ancora_antes=(%s,%s,%s) "
+            "contexto=%s cod_cred=%s nat=%s "
+            "cst_pis=%s cst_cofins=%s apontamento=%s",
             nf_id,
             chave,
             getattr(nf, "num_doc", None),
@@ -775,6 +792,8 @@ def inserir_notas_icms_ausentes_na_efd_v2(
             contexto,
             cod_cred,
             nat_bc_cred,
+            cst_pis_destino,
+            cst_cofins_destino,
             apontamento_id,
         )
 
@@ -788,6 +807,8 @@ def inserir_notas_icms_ausentes_na_efd_v2(
             acao_inicial=acao_inicial,
             apontamento_id=apontamento_id,
             contexto=contexto,
+            cst_pis_destino=cst_pis_destino,
+            cst_cofins_destino=cst_cofins_destino,
             aliq_pis=aliq_pis,
             aliq_cofins=aliq_cofins,
             cod_cred=cod_cred,
@@ -827,6 +848,8 @@ def inserir_notas_icms_ausentes_na_efd_v2(
             "contexto": contexto,
             "cod_cred": cod_cred,
             "nat_bc_cred": nat_bc_cred,
+            "cst_pis_destino": cst_pis_destino,
+            "cst_cofins_destino": cst_cofins_destino,
         })
 
     db.flush()

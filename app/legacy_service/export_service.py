@@ -152,27 +152,6 @@ def exportar_sped(
         for ln in linhas:
             conteudo = obter_conteudo_final(ln) or ""
 
-            ###
-            dbg_0200 = [
-                ln for ln in conteudo_linhas
-                if (ln or "").startswith("|0200|")
-            ]
-
-            logger.warning(
-                "[EXPORT_DBG_0200] total_0200_final=%s primeiros=%s",
-                len(dbg_0200),
-                dbg_0200[:10],
-            )
-            for cod in ["101", "7723051324", "7723047602", "7723050954", "7723048781"]:
-                achou = [ln for ln in dbg_0200 if f"|0200|{cod}|" in ln]
-                logger.warning(
-                    "[EXPORT_DBG_0200_COD] cod_item=%s achou=%s linha=%s",
-                    cod,
-                    bool(achou),
-                    achou[:1],
-                )
-
-            ###
             if "|C170|" not in conteudo:
                 continue
 
@@ -359,6 +338,14 @@ def exportar_sped(
                         base_delta_por_cod_cred_nat_cst[cod_cred_delta][nat_delta].get(cst_pis, Decimal("0.00"))
                         + base_liquida
                 )
+                logger.warning(
+                    "[MAPA_M] cod_cred=%s nat=%s cst=%s base=%s revisao=%s",
+                    cod_cred_delta,
+                    nat_delta,
+                    cst_pis,
+                    base_liquida,
+                    revisao_id,
+                )
 
                 qtd_itens_delta += 1
 
@@ -417,20 +404,10 @@ def exportar_sped(
             logger.warning("HISTÓRICO | CNPJ não encontrado no 0000. Histórico desativado.")
 
         # >>> Bloco 0900 (layout PVA real) <<<
-        tem_0900_original = any(
-            (ln or "").lstrip().startswith("|0900|")
-            for ln in conteudo_linhas
+        conteudo_sem_m = aplicar_0900_se_necessario(
+            linhas_sped=conteudo_sem_m,
+            periodo_yyyymm=int(periodo_0000) if periodo_0000 else None,
         )
-        # Só recalcula/aplica 0900 se ele já existia no arquivo original.
-        # Se o original não tinha 0900, não criamos automaticamente,
-        # porque um 0900 parcial gera erro no PVA.
-        if tem_0900_original:
-            conteudo_sem_m = aplicar_0900_se_necessario(
-                linhas_sped=conteudo_sem_m,
-                periodo_yyyymm=int(periodo_0000) if periodo_0000 else None,
-            )
-        else:
-            logger.info("0900 ignorado | original não possui 0900")
 
         conteudo_sem_m = recalcular_0990_bloco0(conteudo_sem_m)
 
@@ -538,10 +515,35 @@ def exportar_sped(
 
                 if base_delta_por_cod_cred_nat_cst:
                     blocos_m_por_cod: list[str] = []
+                    logger.warning(
+                        "[MAPA_M_FINAL] %s",
+                        {
+                            cod: {
+                                nat: {
+                                    cst: str(base)
+                                    for cst, base in mapa_cst.items()
+                                }
+                                for nat, mapa_cst in mapa_nat.items()
+                            }
+                            for cod, mapa_nat in base_delta_por_cod_cred_nat_cst.items()
+                        },
+                    )
 
                     for cod_cred_delta, base_por_nat_cst_delta in sorted(
                             base_delta_por_cod_cred_nat_cst.items()
                     ):
+                        logger.warning(
+                            "[BLOCO_M_V3][ENTRADA] cod_cred=%s mapa=%s",
+                            cod_cred_delta,
+                            {
+                                nat: {
+                                    cst: str(base)
+                                    for cst, base in mapa.items()
+                                }
+                                for nat, mapa in base_por_nat_cst_delta.items()
+                            },
+                        )
+
                         bloco_tmp = construir_bloco_m_v3(
                             linhas_sped=conteudo_sem_m,
                             parsed=parsed,
@@ -549,6 +551,17 @@ def exportar_sped(
                             cod_cred=str(cod_cred_delta),
                             ajustes_m=ajustes_m,
                         )
+                        logger.warning(
+                            "[BLOCO_M_V3][SAIDA] cod_cred=%s regs=%s",
+                            cod_cred_delta,
+                            [
+                                _reg_of_line(_clean_sped_line(l))
+                                for l in bloco_tmp
+                            ],
+                        )
+
+                        for l in bloco_tmp:
+                            logger.warning("[BLOCO_M_V3] %s", l)
 
                         for ln in bloco_tmp:
                             ln = _clean_sped_line(ln)
@@ -582,7 +595,6 @@ def exportar_sped(
             raise ValueError("EfdArquivo.periodo não preenchido (YYYYMM).")
 
         periodo_atual = str(periodo_atual)
-        periodo_atual_mmaaaa = yyyymm_to_mmyyyy(periodo_atual)
 
         estoques_v2 = buscar_creditos_estoque_v2(
             db=db,

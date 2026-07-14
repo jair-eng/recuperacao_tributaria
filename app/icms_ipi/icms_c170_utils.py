@@ -30,6 +30,8 @@ def montar_linha_c170_de_icms(
     dominio: str,
     contexto: str | None = None,
     fator_base_credito: float | None = None,
+    cst_pis_destino: str | None = None,
+    cst_cofins_destino: str | None = None,
     aliq_pis: str | None = None,
     aliq_cofins: str | None = None,
 ):
@@ -56,9 +58,33 @@ def montar_linha_c170_de_icms(
             or getattr(item, "cod_cta", None)
     )
 
-    cst_pis_credito, cst_cofins_credito = resolver_cst_credito_por_dominio(
+    cst_pis_fallback, cst_cofins_fallback = resolver_cst_credito_por_dominio(
         dominio=dominio,
         contexto=contexto,
+    )
+
+    cst_pis_credito = str(
+        cst_pis_destino or cst_pis_fallback or ""
+    ).strip().zfill(2)
+
+    cst_cofins_credito = str(
+        cst_cofins_destino or cst_cofins_fallback or ""
+    ).strip().zfill(2)
+
+    log.warning(
+        "[C170_CST_RESOLVE] "
+        "item_id=%s cod_item=%s "
+        "cst_pis_enquadramento=%s cst_cofins_enquadramento=%s "
+        "cst_pis_fallback=%s cst_cofins_fallback=%s "
+        "cst_pis_final=%s cst_cofins_final=%s",
+        getattr(item, "id", None),
+        getattr(item, "cod_item", None),
+        cst_pis_destino,
+        cst_cofins_destino,
+        cst_pis_fallback,
+        cst_cofins_fallback,
+        cst_pis_credito,
+        cst_cofins_credito,
     )
 
     aliq_pis_pct = Decimal(str(aliq_pis or fmt_sped_num(ALIQUOTA_PIS_PCT)).replace(",", "."))
@@ -186,6 +212,8 @@ def _criar_revisao_insert_c170_faltante_v2(
     linha_ref: int | None,
     item_icms: NfIcmsItem,
     contexto: str | None = None,
+    cst_pis_destino: str | None = None,
+    cst_cofins_destino: str | None = None,
     aliq_pis: str | None = None,
     aliq_cofins: str | None = None,
     cod_cred: str | None = None,
@@ -215,10 +243,27 @@ def _criar_revisao_insert_c170_faltante_v2(
         )
         return None
 
+    logger.warning(
+        "[INSERT_C170_V2][ENQUADRAMENTO] "
+        "versao=%s item=%s contexto=%s cod_cred=%s nat=%s "
+        "cst_pis=%s cst_cofins=%s aliq_pis=%s aliq_cofins=%s",
+        versao_origem_id,
+        getattr(item_icms, "id", None),
+        contexto,
+        cod_cred,
+        nat_bc_cred,
+        cst_pis_destino,
+        cst_cofins_destino,
+        aliq_pis,
+        aliq_cofins,
+    )
+
     linha_nova = montar_linha_c170_de_icms(
         item_icms,
         dominio=dominio,
         contexto=contexto,
+        cst_pis_destino=cst_pis_destino,
+        cst_cofins_destino=cst_cofins_destino,
         aliq_pis=aliq_pis,
         aliq_cofins=aliq_cofins,
     )
@@ -241,6 +286,8 @@ def _criar_revisao_insert_c170_faltante_v2(
                 "contexto_credito": contexto,
                 "cod_cred": cod_cred,
                 "nat_bc_cred": nat_bc_cred,
+                "cst_pis_destino": cst_pis_destino,
+                "cst_cofins_destino": cst_cofins_destino,
                 "aliq_pis": aliq_pis,
                 "aliq_cofins": aliq_cofins,
             },

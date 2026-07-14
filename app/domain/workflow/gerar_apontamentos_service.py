@@ -217,8 +217,6 @@ def gerar_apontamentos_por_contexto(
 
         score_result = cache.score(item)
 
-        enquadramento_diag = meta_diag.get("enquadramento") or {}
-
         impacto_estimado = calcular_impacto_estimado(
             vl_item=meta_diag.get("vl_item"),
             vl_desc=meta_diag.get("vl_desc"),
@@ -326,6 +324,12 @@ def gerar_apontamentos_por_contexto(
         stats[f"tipo_corretiva:{tipo_corretiva_v2}"] += 1
         stats[f"status:{status_cruzamento}"] += 1
 
+        cst_pis_destino = enquadramento_diag.get("cst_pis_destino")
+        cst_cofins_destino = enquadramento_diag.get("cst_cofins_destino")
+
+        aliq_pis = enquadramento_diag.get("aliq_pis")
+        aliq_cofins = enquadramento_diag.get("aliq_cofins")
+
         meta_fiscal = {
             "codigo_cenario": codigo_cenario,
             "cenario": codigo_cenario,
@@ -338,10 +342,17 @@ def gerar_apontamentos_por_contexto(
             "contexto_credito": codigo_cenario,
             "natureza_credito_m": nat_bc_cred,
 
+            "cst_pis_destino": cst_pis_destino,
+            "cst_cofins_destino": cst_cofins_destino,
+
+            "aliq_pis": aliq_pis,
+            "aliq_cofins": aliq_cofins,
+
             "fundamento_legal": fundamento_legal,
             "justificativa_cenario": justificativa_cenario,
         }
         meta_item = getattr(item, "meta", None) or {}
+
         novos_apontamentos.append(
             EfdApontamento(
                 versao_id=int(versao_id),
@@ -353,7 +364,6 @@ def gerar_apontamentos_por_contexto(
                 impacto_financeiro=impacto_estimado,
                 prioridade=diag.get("prioridade"),
                 meta_json=json_safe({
-                    **meta_fiscal,
                     **meta_diag,
                     **meta_fiscal,
                     "meta_fiscal": meta_fiscal,

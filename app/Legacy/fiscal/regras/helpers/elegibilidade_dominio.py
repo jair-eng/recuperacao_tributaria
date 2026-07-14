@@ -399,7 +399,7 @@ def resolver_cst_credito_por_dominio(
 
     # 2) domínio padrão
     if dom == DOM_TRANSP:
-        return "51", "51"
+        return "50", "50"
 
     if dom in {DOM_CAFE, DOM_AGRO}:
         return "51", "51"

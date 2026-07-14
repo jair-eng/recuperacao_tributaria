@@ -449,12 +449,35 @@ def _resolver_v2_c100_c170_por_nf(
             or enq.get("base_credito_codigo")
             or enq.get("cod_base_credito")
         )
+        cst_pis_destino = (
+                meta_base.get("cst_pis_destino")
+                or enq.get("cst_pis_destino")
+        )
 
-        if not contexto or not cod_cred or not nat_bc_cred:
+        cst_cofins_destino = (
+                meta_base.get("cst_cofins_destino")
+                or enq.get("cst_cofins_destino")
+        )
+
+        if (
+                not contexto
+                or not cod_cred
+                or not nat_bc_cred
+                or not cst_pis_destino
+                or not cst_cofins_destino
+        ):
             erros += len(apontamentos_grupo)
+
             logger.warning(
-                "[V2 LOTE] NF sem enquadramento fiscal completo | nf_id=%s contexto=%s cod_cred=%s nat=%s",
-                nf_id, contexto, cod_cred, nat_bc_cred,
+                "[V2 LOTE] NF sem enquadramento fiscal completo | "
+                "nf_id=%s contexto=%s cod_cred=%s nat=%s "
+                "cst_pis=%s cst_cofins=%s",
+                nf_id,
+                contexto,
+                cod_cred,
+                nat_bc_cred,
+                cst_pis_destino,
+                cst_cofins_destino,
             )
             continue
 
@@ -512,13 +535,21 @@ def _resolver_v2_c100_c170_por_nf(
         itens = [x["nf_item"] for x in itens_ctx]
 
         logger.warning(
-            "[V2 LOTE] NF ELEGIVEL | nf_id=%s chave=%s itens=%s aps=%s",
+            "[V2 LOTE][ENQUADRAMENTO_NOTA] "
+            "nf_id=%s chave=%s contexto=%s "
+            "cod_cred=%s nat=%s "
+            "cst_pis=%s cst_cofins=%s "
+            "aliq_pis=%s aliq_cofins=%s",
             nf_id,
             chave,
-            len(itens),
-            [ap.id for ap in apontamentos_grupo],
+            contexto,
+            cod_cred,
+            nat_bc_cred,
+            cst_pis_destino,
+            cst_cofins_destino,
+            enq.get("aliq_pis"),
+            enq.get("aliq_cofins"),
         )
-
 
         notas_elegiveis_v2.append({
             "nf": nf,
@@ -527,6 +558,8 @@ def _resolver_v2_c100_c170_por_nf(
             "contexto": contexto,
             "cod_cred": cod_cred,
             "nat_bc_cred": nat_bc_cred,
+            "cst_pis_destino": str(cst_pis_destino).strip().zfill(2),
+            "cst_cofins_destino": str(cst_cofins_destino).strip().zfill(2),
             "aliq_pis": fmt_aliq_sped(enq.get("aliq_pis") or ""),
             "aliq_cofins": fmt_aliq_sped(enq.get("aliq_cofins") or ""),
             "apontamento_id": int(apontamentos_grupo[0].id),
