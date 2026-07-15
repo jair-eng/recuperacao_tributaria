@@ -406,22 +406,38 @@ def _aplicar_corretiva_match_patch_c170_v2(
             or enq.get("nat_bc_cred")
     )
 
+    cst_pis_destino = (
+            meta.get("cst_pis_destino")
+            or meta_fiscal.get("cst_pis_destino")
+            or enq.get("cst_pis_destino")
+    )
+
+    cst_cofins_destino = (
+            meta.get("cst_cofins_destino")
+            or meta_fiscal.get("cst_cofins_destino")
+            or enq.get("cst_cofins_destino")
+    )
+    cst_pis_destino = (
+        str(cst_pis_destino).strip().zfill(2)
+        if cst_pis_destino not in (None, "")
+        else None
+    )
+
+    cst_cofins_destino = (
+        str(cst_cofins_destino).strip().zfill(2)
+        if cst_cofins_destino not in (None, "")
+        else None
+    )
+
+    aliq_pis = fmt_aliq_sped(enq.get("aliq_pis") or "")
+    aliq_cofins = fmt_aliq_sped(enq.get("aliq_cofins") or "")
+
     alteracao = {
         "registro_id": int(registro_id_c170),
         "cfop": None,
 
-        "cst_pis": str(
-            meta.get("cst_pis_sugerido")
-            or enq.get("cst_pis")
-            or enq.get("cst_destino")
-            or "50"
-        ),
-        "cst_cofins": str(
-            meta.get("cst_cofins_sugerido")
-            or enq.get("cst_cofins")
-            or enq.get("cst_destino")
-            or "50"
-        ),
+        "cst_pis": cst_pis_destino,
+        "cst_cofins": cst_cofins_destino,
 
         "vl_bc_pis": str(
             meta.get("base_credito_sugerida")
@@ -429,11 +445,8 @@ def _aplicar_corretiva_match_patch_c170_v2(
             or meta.get("vl_item")
             or ""
         ),
-        "aliq_pis": fmt_aliq_sped( str(
-            meta.get("aliq_pis_sugerida")
-            or enq.get("aliq_pis")
-            or "1,65"
-        )),
+        "aliq_pis": aliq_pis,
+
         "vl_pis": str(
             meta.get("pis_estimado")
             or meta.get("vl_pis_sugerido")
@@ -446,21 +459,32 @@ def _aplicar_corretiva_match_patch_c170_v2(
             or meta.get("vl_item")
             or ""
         ),
-        "aliq_cofins": fmt_aliq_sped( str(
-            meta.get("aliq_cofins_sugerida")
-            or enq.get("aliq_cofins")
-            or "7,60"
-        )),
+        "aliq_cofins": aliq_cofins,
+
         "vl_cofins": str(
             meta.get("cofins_estimado")
             or meta.get("vl_cofins_sugerido")
             or ""
         ),
-        "meta_fiscal": {
+         "meta_fiscal": {
             **meta_fiscal,
             "codigo_cenario": codigo_cenario,
             "cenario": codigo_cenario,
-            "enquadramento": enq,
+            "enquadramento": {
+                **enq,
+                "cst_pis_destino": cst_pis_destino,
+                "cst_cofins_destino": cst_cofins_destino,
+                "cst_pis": cst_pis_destino,
+                "cst_cofins": cst_cofins_destino,
+                "aliq_pis": aliq_pis,
+                "aliq_cofins": aliq_cofins,
+            },
+            "cst_pis_destino": cst_pis_destino,
+            "cst_cofins_destino": cst_cofins_destino,
+            "cst_pis": cst_pis_destino,
+            "cst_cofins": cst_cofins_destino,
+            "aliq_pis": aliq_pis,
+            "aliq_cofins": aliq_cofins,
             "cod_cred": cod_cred,
             "tipo_credito_codigo": cod_cred,
             "nat_bc_cred": nat_bc_cred,
@@ -469,14 +493,14 @@ def _aplicar_corretiva_match_patch_c170_v2(
             "contexto_credito": codigo_cenario,
             "natureza_credito_m": nat_bc_cred,
         },
-        "codigo_cenario": codigo_cenario,
-        "contexto": codigo_cenario,
-        "cod_cred": cod_cred,
-        "nat_bc_cred": nat_bc_cred,
-        "natureza_credito_m": nat_bc_cred,
-        "dominio": meta.get("dominio"),
 
-    }
+            "codigo_cenario": codigo_cenario,
+            "contexto": codigo_cenario,
+            "cod_cred": cod_cred,
+            "nat_bc_cred": nat_bc_cred,
+            "natureza_credito_m": nat_bc_cred,
+            "dominio": meta.get("dominio"),
+        }
 
     res = revisar_c170_lote(
         db,

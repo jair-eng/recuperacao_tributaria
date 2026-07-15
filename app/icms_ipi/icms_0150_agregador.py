@@ -211,31 +211,19 @@ def _achar_linha_insercao_0150(
 ) -> int:
     """
     Regra:
-    - se já houver 0150, insere após o último 0150
-    - senão, insere após o último 0140
+
+    - senão, insere após o primeiro 0140
     - fallback final: após o último 0120/0110/0100/0001/0000
     """
-    # 1) último 0150
-    reg = (
-        db.query(EfdRegistro)
-        .filter(
-            EfdRegistro.versao_id == versao_id,
-            EfdRegistro.reg == "0150",
-        )
-        .order_by(EfdRegistro.linha.desc())
-        .first()
-    )
-    if reg:
-        return int(reg.linha or 0)
 
-    # 2) último 0140
+    # 2) primeiro 0140
     reg = (
         db.query(EfdRegistro)
         .filter(
             EfdRegistro.versao_id == versao_id,
             EfdRegistro.reg == "0140",
         )
-        .order_by(EfdRegistro.linha.desc())
+        .order_by(EfdRegistro.linha.asc())
         .first()
     )
     if reg:

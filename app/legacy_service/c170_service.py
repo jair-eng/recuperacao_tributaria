@@ -32,6 +32,12 @@ def revisar_c170(
     fator_base_credito: Optional[float] = None,
     aliq_pis: Optional[str] = None,
     aliq_cofins: Optional[str] = None,
+
+    # novos campos explícitos
+    vl_bc_pis: Any = None,
+    vl_pis: Any = None,
+    vl_bc_cofins: Any = None,
+    vl_cofins: Any = None,
     natureza_credito_m: Optional[str] = None,
     meta_fiscal: Optional[Dict[str, Any]] = None,
     cod_cred: Optional[str] = None,
@@ -77,6 +83,11 @@ def revisar_c170(
         fator_base_credito=fator_base_credito,
         aliq_pis=aliq_pis,
         aliq_cofins=aliq_cofins,
+
+        vl_bc_pis=vl_bc_pis,
+        vl_pis=vl_pis,
+        vl_bc_cofins=vl_bc_cofins,
+        vl_cofins=vl_cofins,
     )
     # ✅ se CST virar não creditável, zera campos de PIS/COFINS
     if _cst_sem_credito(cst_pis) or _cst_sem_credito(cst_cofins):
@@ -111,7 +122,7 @@ def revisar_c170(
             or contexto
     )
 
-    enquadramento_final = meta_fiscal_final.get("enquadramento") or {}
+    enquadramento_final = dict(meta_fiscal_final.get("enquadramento") or {})
 
     cod_cred_final = (
             meta_fiscal_final.get("cod_cred")
@@ -130,10 +141,54 @@ def revisar_c170(
             or enquadramento_final.get("nat_bc_cred")
     )
 
+    cst_pis_final = (
+            cst_pis
+            or meta_fiscal_final.get("cst_pis_destino")
+            or meta_fiscal_final.get("cst_pis")
+            or enquadramento_final.get("cst_pis_destino")
+            or enquadramento_final.get("cst_pis")
+    )
+
+    cst_cofins_final = (
+            cst_cofins
+            or meta_fiscal_final.get("cst_cofins_destino")
+            or meta_fiscal_final.get("cst_cofins")
+            or enquadramento_final.get("cst_cofins_destino")
+            or enquadramento_final.get("cst_cofins")
+    )
+
+    if cst_pis_final not in (None, ""):
+        cst_pis_final = str(cst_pis_final).strip().zfill(2)
+
+    if cst_cofins_final not in (None, ""):
+        cst_cofins_final = str(cst_cofins_final).strip().zfill(2)
+
+    enquadramento_final.update({
+        "cst_pis_destino": cst_pis_final,
+        "cst_cofins_destino": cst_cofins_final,
+        "cst_pis": cst_pis_final,
+        "cst_cofins": cst_cofins_final,
+        "aliq_pis": aliq_pis,
+        "aliq_cofins": aliq_cofins,
+    })
+
     meta_fiscal_final.update({
         "codigo_cenario": codigo_cenario,
         "cenario": codigo_cenario,
         "enquadramento": enquadramento_final,
+
+        "cst_pis_destino": cst_pis_final,
+        "cst_cofins_destino": cst_cofins_final,
+        "cst_pis": cst_pis_final,
+        "cst_cofins": cst_cofins_final,
+
+        "aliq_pis": aliq_pis,
+        "aliq_cofins": aliq_cofins,
+        "vl_bc_pis": vl_bc_pis,
+        "vl_pis": vl_pis,
+        "vl_bc_cofins": vl_bc_cofins,
+        "vl_cofins": vl_cofins,
+
         "cod_cred": cod_cred_final,
         "tipo_credito_codigo": cod_cred_final,
         "nat_bc_cred": nat_bc_cred_final,
@@ -146,21 +201,57 @@ def revisar_c170(
     payload_rev = {
         "linha_referencia": int(getattr(r, "linha", 0)),
         "linha_nova": linha_nova,
+
         "meta": {
             **meta_fiscal_final,
+
             "tipo_apontamento": motivo_codigo,
-            "cst_pis": cst_pis,
-            "cst_cofins": cst_cofins,
+            "tipo_corretiva_v2": "PATCH_C170_EXISTENTE",
+
+            "cst_pis": cst_pis_final,
+            "cst_cofins": cst_cofins_final,
+            "cst_pis_destino": cst_pis_final,
+            "cst_cofins_destino": cst_cofins_final,
+
+            "aliq_pis": aliq_pis,
+            "aliq_cofins": aliq_cofins,
+            "vl_bc_pis": vl_bc_pis,
+            "vl_pis": vl_pis,
+            "vl_bc_cofins": vl_bc_cofins,
+            "vl_cofins": vl_cofins,
+
+            "codigo_cenario": codigo_cenario,
+            "contexto": codigo_cenario,
             "dominio": dominio,
+
+            "cod_cred": cod_cred_final,
+            "nat_bc_cred": nat_bc_cred_final,
+            "natureza_credito_m": nat_bc_cred_final,
         },
+
         "detalhe": {
             "tipo": "PATCH_C170_FINAL",
             "set": {
                 "cfop": cfop,
-                "cst_pis": cst_pis,
-                "cst_cofins": cst_cofins,
-                "contexto": contexto,
-                "natureza_credito_m": natureza_credito_m,
+
+                "cst_pis": cst_pis_final,
+                "cst_cofins": cst_cofins_final,
+                "cst_pis_destino": cst_pis_final,
+                "cst_cofins_destino": cst_cofins_final,
+
+                "vl_bc_pis": vl_bc_pis,
+                "aliq_pis": aliq_pis,
+                "vl_pis": vl_pis,
+
+                "vl_bc_cofins": vl_bc_cofins,
+                "aliq_cofins": aliq_cofins,
+                "vl_cofins": vl_cofins,
+
+                "contexto": codigo_cenario,
+                "cod_cred": cod_cred_final,
+                "nat_bc_cred": nat_bc_cred_final,
+                "natureza_credito_m": nat_bc_cred_final,
+
                 "pf": False,
             },
         },
@@ -322,17 +413,49 @@ def revisar_c170_lote(
                 db,
                 registro_id=int(reg_db.id),
                 versao_origem_id=int(versao_origem_id),
+
                 cfop=item.get("cfop"),
                 cst_pis=item.get("cst_pis"),
                 cst_cofins=item.get("cst_cofins"),
+
                 motivo_codigo=motivo_codigo,
                 apontamento_id=apontamento_id,
-                dominio=item.get("dominio"),
-                contexto=item.get("contexto"),
-                fator_base_credito=item.get("fator_base_credito"),
-                aliq_pis=item.get("aliq_pis"),
-                aliq_cofins=item.get("aliq_cofins"),
-                natureza_credito_m=item.get("natureza_credito_m"),
+
+                dominio=(
+                        item.get("dominio")
+                        or dominio
+                ),
+                contexto=(
+                        item.get("contexto")
+                        or item.get("codigo_cenario")
+                        or contexto
+                ),
+                fator_base_credito=(
+                    item.get("fator_base_credito")
+                    if item.get("fator_base_credito") is not None
+                    else fator_base_credito
+                ),
+
+                aliq_pis=(
+                    item.get("aliq_pis")
+                    if item.get("aliq_pis") not in (None, "")
+                    else aliq_pis
+                ),
+                aliq_cofins=(
+                    item.get("aliq_cofins")
+                    if item.get("aliq_cofins") not in (None, "")
+                    else aliq_cofins
+                ),
+
+                vl_bc_pis=item.get("vl_bc_pis"),
+                vl_pis=item.get("vl_pis"),
+                vl_bc_cofins=item.get("vl_bc_cofins"),
+                vl_cofins=item.get("vl_cofins"),
+
+                natureza_credito_m=(
+                        item.get("natureza_credito_m")
+                        or item.get("nat_bc_cred")
+                ),
                 meta_fiscal=item.get("meta_fiscal"),
                 cod_cred=item.get("cod_cred"),
                 nat_bc_cred=item.get("nat_bc_cred"),
@@ -479,12 +602,48 @@ def revisar_c170_global(
     novo_cof = valores_novos.get("cst_cofins") if valores_novos.get("cst_cofins") not in ("", None) else None
 
     lote: List[Dict[str, Any]] = []
+
     for r in registros:
         lote.append({
             "registro_id": int(r.id),
-            "cfop": str(novo_cfop).strip() if novo_cfop is not None else None,
-            "cst_pis": str(novo_pis).strip() if novo_pis is not None else None,
-            "cst_cofins": str(novo_cof).strip() if novo_cof is not None else None,
+
+            "cfop": (
+                str(novo_cfop).strip()
+                if novo_cfop is not None
+                else None
+            ),
+            "cst_pis": (
+                str(novo_pis).strip()
+                if novo_pis is not None
+                else None
+            ),
+            "cst_cofins": (
+                str(novo_cof).strip()
+                if novo_cof is not None
+                else None
+            ),
+
+            "aliq_pis": valores_novos.get("aliq_pis"),
+            "aliq_cofins": valores_novos.get("aliq_cofins"),
+
+            "vl_bc_pis": valores_novos.get("vl_bc_pis"),
+            "vl_pis": valores_novos.get("vl_pis"),
+            "vl_bc_cofins": valores_novos.get("vl_bc_cofins"),
+            "vl_cofins": valores_novos.get("vl_cofins"),
+
+            "dominio": valores_novos.get("dominio"),
+            "contexto": (
+                    valores_novos.get("contexto")
+                    or valores_novos.get("codigo_cenario")
+            ),
+
+            "natureza_credito_m": (
+                    valores_novos.get("natureza_credito_m")
+                    or valores_novos.get("nat_bc_cred")
+            ),
+            "cod_cred": valores_novos.get("cod_cred"),
+            "nat_bc_cred": valores_novos.get("nat_bc_cred"),
+            "meta_fiscal": valores_novos.get("meta_fiscal"),
         })
 
     # 4) Executa lote

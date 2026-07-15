@@ -1,7 +1,8 @@
 from __future__ import annotations
 import re
 from typing import Any, List, Tuple
-
+from decimal import Decimal
+from app.utils.numbers import dec_any, q2
 from app.Legacy.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_credito_por_dominio
 from app.Legacy.fiscal.settings_fiscais import CSTS_TRIB_NCUM
 from dataclasses import dataclass
@@ -146,69 +147,138 @@ def patch_c170_campos(
     fator_base_credito: float | None = None,
     aliq_pis: str | None = None,
     aliq_cofins: str | None = None,
+    vl_bc_pis=None,
+    vl_pis=None,
+    vl_bc_cofins=None,
+    vl_cofins=None,
 ) -> list[str]:
 
     novos = ["" if c is None else str(c).strip() for c in campos]
 
     offset = 1 if novos and novos[0] == "C170" else 0
 
-    try:
-        valor_item = float((novos[5 + offset] or "0").replace(',', '.'))
-    except Exception:
-        valor_item = 0.0
+    # ------------------------------------------------------------
+    # 1) Base calculada da linha original: fallback
+    # ------------------------------------------------------------
+    valor_item = dec_any(novos[5 + offset] or "0")
+    valor_desc = dec_any(novos[6 + offset] or "0")
+    valor_icms = dec_any(novos[13 + offset] or "0")
 
-    try:
-        valor_desc = float((novos[6 + offset] or "0").replace(',', '.'))
-    except Exception:
-        valor_desc = 0.0
+    base_credito_calculada = valor_item - valor_desc - valor_icms
 
-    try:
-        valor_icms = float((novos[13 + offset] or "0").replace(',', '.'))
-    except Exception:
-        valor_icms = 0.0
-
-    base_credito = valor_item - valor_desc - valor_icms
-    if base_credito < 0:
-        base_credito = 0.0
+    if base_credito_calculada < 0:
+        base_credito_calculada = Decimal("0")
 
     if fator_base_credito is not None:
-        base_credito = base_credito * float(fator_base_credito)
+        base_credito_calculada *= dec_any(fator_base_credito)
 
-    # se não vier CST explícito, tenta resolver por domínio
-    if dominio and (not cst_pis or not cst_cofins):
+    base_credito_calculada = q2(base_credito_calculada)
+
+    # ------------------------------------------------------------
+    # 2) CST explícito tem prioridade.
+    #    Domínio é apenas fallback.
+    # ------------------------------------------------------------
+    if dominio and (
+        cst_pis in (None, "")
+        or cst_cofins in (None, "")
+    ):
         cst_pis_dom, cst_cofins_dom = resolver_cst_credito_por_dominio(
             dominio=dominio,
             contexto=contexto,
         )
-        cst_pis = cst_pis or cst_pis_dom
-        cst_cofins = cst_cofins or cst_cofins_dom
 
-    aliq_pis_calc = fmt_aliq_sped(aliq_pis or "1,6500")
-    aliq_cofins_calc = fmt_aliq_sped(aliq_cofins or "7,6000")
+        if cst_pis in (None, ""):
+            cst_pis = cst_pis_dom
 
-    aliq_pis_num = float(aliq_pis_calc.replace(",", "."))
-    aliq_cofins_num = float(aliq_cofins_calc.replace(",", "."))
+        if cst_cofins in (None, ""):
+            cst_cofins = cst_cofins_dom
 
-    csts_creditaveis_patch = set(CSTS_CREDITAVEIS or set())
+    cst_pis = (
+        str(cst_pis).strip().zfill(2)
+        if cst_pis not in (None, "")
+        else None
+    )
 
-    if contexto == "LC192":
-        csts_creditaveis_patch.add("61")
+    cst_cofins = (
+        str(cst_cofins).strip().zfill(2)
+        if cst_cofins not in (None, "")
+        else None
+    )
 
+    # ------------------------------------------------------------
+    # 3) Alíquotas vindas do enquadramento.
+    #    Padrão apenas como fallback.
+    # ------------------------------------------------------------
+    aliq_pis_calc = fmt_aliq_sped(
+        aliq_pis
+        if aliq_pis not in (None, "")
+        else "1,6500"
+    )
+
+    aliq_cofins_calc = fmt_aliq_sped(
+        aliq_cofins
+        if aliq_cofins not in (None, "")
+        else "7,6000"
+    )
+
+    aliq_pis_num = dec_any(aliq_pis_calc)
+    aliq_cofins_num = dec_any(aliq_cofins_calc)
+
+    # ------------------------------------------------------------
+    # 4) Bases explícitas têm prioridade sobre o cálculo da linha
+    # ------------------------------------------------------------
+    base_pis = (
+        q2(dec_any(vl_bc_pis))
+        if vl_bc_pis not in (None, "")
+        else base_credito_calculada
+    )
+
+    base_cofins = (
+        q2(dec_any(vl_bc_cofins))
+        if vl_bc_cofins not in (None, "")
+        else base_credito_calculada
+    )
+
+    valor_pis = (
+        q2(dec_any(vl_pis))
+        if vl_pis not in (None, "")
+        else q2(base_pis * aliq_pis_num / Decimal("100"))
+    )
+
+    valor_cofins = (
+        q2(dec_any(vl_cofins))
+        if vl_cofins not in (None, "")
+        else q2(base_cofins * aliq_cofins_num / Decimal("100"))
+    )
+
+    csts_creditaveis_patch = {
+        str(cst).strip().zfill(2)
+        for cst in (CSTS_CREDITAVEIS or set())
+    }
+
+    # ------------------------------------------------------------
+    # 5) Atualiza PIS
+    # ------------------------------------------------------------
     if cst_pis:
-        novos[23 + offset] = str(cst_pis).zfill(2)
-        if str(cst_pis).zfill(2) in csts_creditaveis_patch:
-            novos[24 + offset] = f"{base_credito:.2f}".replace('.', ',')
+        novos[23 + offset] = cst_pis
+
+        if cst_pis in csts_creditaveis_patch:
+            novos[24 + offset] = str(q2(base_pis)).replace(".", ",")
             novos[25 + offset] = aliq_pis_calc
-            novos[28 + offset] = f"{(base_credito * (aliq_pis_num / 100.0)):.2f}".replace('.', ',')
+            novos[28 + offset] = str(q2(valor_pis)).replace(".", ",")
 
+    # ------------------------------------------------------------
+    # 6) Atualiza COFINS
+    # ------------------------------------------------------------
     if cst_cofins:
-        novos[29 + offset] = str(cst_cofins).zfill(2)
-        if str(cst_cofins).zfill(2) in csts_creditaveis_patch:
-            novos[30 + offset] = f"{base_credito:.2f}".replace('.', ',')
-            novos[31 + offset] = aliq_cofins_calc
-            novos[34 + offset] = f"{(base_credito * (aliq_cofins_num / 100.0)):.2f}".replace('.', ',')
+        novos[29 + offset] = cst_cofins
 
-    if cfop:
+        if cst_cofins in csts_creditaveis_patch:
+            novos[30 + offset] = str(q2(base_cofins)).replace(".", ",")
+            novos[31 + offset] = aliq_cofins_calc
+            novos[34 + offset] = str(q2(valor_cofins)).replace(".", ",")
+
+    if cfop not in (None, ""):
         novos[9 + offset] = str(cfop)
 
     return novos

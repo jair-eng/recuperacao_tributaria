@@ -384,7 +384,23 @@ def exportar_sped(
 
         # 4) remove COMPLETAMENTE M* do conteúdo (por linha, não por reg do objeto)
         conteudo_linhas = [(obter_conteudo_final(l) or "") for l in linhas]
+        logger.warning(
+            "[DBG_BLOCO_C][APOS_OVERLAY] "
+            "c001=%s c010=%s c100=%s c990=%s",
+            sum(1 for ln in conteudo_linhas if (ln or "").startswith("|C001|")),
+            sum(1 for ln in conteudo_linhas if (ln or "").startswith("|C010|")),
+            sum(1 for ln in conteudo_linhas if (ln or "").startswith("|C100|")),
+            sum(1 for ln in conteudo_linhas if (ln or "").startswith("|C990|")),
+        )
         conteudo_sem_m = [ln for ln in conteudo_linhas if not (ln or "").lstrip().startswith("|M")]
+        logger.warning(
+            "[DBG_BLOCO_C][ANTES_WRITER] "
+            "c001=%s c010=%s c100=%s c990=%s",
+            sum(1 for ln in conteudo_sem_m if (ln or "").startswith("|C001|")),
+            sum(1 for ln in conteudo_sem_m if (ln or "").startswith("|C010|")),
+            sum(1 for ln in conteudo_sem_m if (ln or "").startswith("|C100|")),
+            sum(1 for ln in conteudo_sem_m if (ln or "").startswith("|C990|")),
+        )
 
         linhas_m_originais = [
             ln for ln in conteudo_linhas
@@ -404,13 +420,22 @@ def exportar_sped(
             logger.warning("HISTÓRICO | CNPJ não encontrado no 0000. Histórico desativado.")
 
         # >>> Bloco 0900 (layout PVA real) <<<
-        conteudo_sem_m = aplicar_0900_se_necessario(
-            linhas_sped=conteudo_sem_m,
-            periodo_yyyymm=int(periodo_0000) if periodo_0000 else None,
+        tem_0900_original = any(
+            (ln or "").lstrip().startswith("|0900|")
+            for ln in conteudo_linhas
         )
+        # Só recalcula/aplica 0900 se ele já existia no arquivo original.
+        # Se o original não tinha 0900, não criamos automaticamente,
+        # porque um 0900 parcial gera erro no PVA.
+        if tem_0900_original:
+            conteudo_sem_m = aplicar_0900_se_necessario(
+                linhas_sped=conteudo_sem_m,
+                periodo_yyyymm=int(periodo_0000) if periodo_0000 else None,
+            )
+        else:
+            logger.info("0900 ignorado | original não possui 0900")
 
         conteudo_sem_m = recalcular_0990_bloco0(conteudo_sem_m)
-
 
         # Parse do conteúdo final (já com 0900 se inserido)
         parsed = parse_sped_from_lines(conteudo_sem_m)

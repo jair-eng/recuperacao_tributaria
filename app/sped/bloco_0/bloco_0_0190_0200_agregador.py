@@ -32,7 +32,7 @@ def _resolver_ancora_bloco0_mestres_icms_ipi(
             EfdRegistro.versao_id == int(versao_origem_id),
             EfdRegistro.reg == "0140",
         )
-        .order_by(EfdRegistro.linha.desc())
+        .order_by(EfdRegistro.linha.asc())
         .first()
     )
 
@@ -54,60 +54,32 @@ def _resolver_ancora_bloco0_mestres_icms_ipi(
             return getattr(reg, "id", None), int(getattr(reg, "linha", 0) or 0)
 
     return None, 0
-
-def _resolver_ancora_para_0190(
+def _resolver_ancora_0500_antes_0990(
     db: Session,
     *,
     versao_origem_id: int,
 ) -> tuple[int | None, int]:
-    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
-        db,
-        versao_origem_id=int(versao_origem_id),
-        versao_final_id=None,
+    reg_0990 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0990",
+        )
+        .order_by(EfdRegistro.linha.asc())
+        .first()
     )
 
-    ordem_preferencia = ("0190", "0150", "0140", "0110", "0100", "0001", "0000")
+    if reg_0990:
+        return (
+            getattr(reg_0990, "id", None),
+            int(getattr(reg_0990, "linha", 0) or 0),
+        )
 
-    for reg_ancora in ordem_preferencia:
-        candidatos = [
-            l for l in linhas
-            if str(getattr(l, "reg", "")).upper() == reg_ancora
-        ]
-        if candidatos:
-            ultimo = candidatos[-1]
-            return (
-                getattr(ultimo, "registro_id", None),
-                int(getattr(ultimo, "linha", 0) or 0),
-            )
-
-    return None, 0
-
-def _resolver_ancora_para_0200(
-    db: Session,
-    *,
-    versao_origem_id: int,
-) -> tuple[int | None, int]:
-    linhas = carregar_linhas_logicas_com_revisoes_e_insert(
+    # fallback: mantém o comportamento atual se o arquivo estiver estranho
+    return _resolver_ancora_bloco0_mestres_icms_ipi(
         db,
-        versao_origem_id=int(versao_origem_id),
-        versao_final_id=None,
+        versao_origem_id=versao_origem_id,
     )
-
-    ordem_preferencia = ("0200", "0190", "0150", "0140", "0110", "0100", "0001", "0000")
-
-    for reg_ancora in ordem_preferencia:
-        candidatos = [
-            l for l in linhas
-            if str(getattr(l, "reg", "")).upper() == reg_ancora
-        ]
-        if candidatos:
-            ultimo = candidatos[-1]
-            return (
-                getattr(ultimo, "registro_id", None),
-                int(getattr(ultimo, "linha", 0) or 0),
-            )
-
-    return None, 0
 
 
 def garantir_0190_para_item(
@@ -279,9 +251,12 @@ def garantir_0500_conta_padrao(
     ):
         return cod_cta
 
-    registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
+    registro_id_alvo, linha_ref = _resolver_ancora_0500_antes_0990(
         db,
-        versao_origem_id=versao_origem_id,    )
+        versao_origem_id=versao_origem_id,
+    )
+
+
 
 
     linha_nova = f"|0500|01012014|04|A|5|{cod_cta}|{nome_cta}|||"
@@ -291,7 +266,7 @@ def garantir_0500_conta_padrao(
         versao_revisada_id=None,
         registro_id=registro_id_alvo,
         reg="0500",
-        acao="INSERT_AFTER",
+        acao="INSERT_BEFORE",
         revisao_json={
             "linha_nova": linha_nova,
             "linha_referencia": int(linha_ref or 0),
@@ -308,9 +283,13 @@ def garantir_0500_conta_padrao(
     db.flush()
 
     logger.warning(
-        "[0500_CTA_CRIADO] rv_id=%s linha_ref=%s cod_cta=%s nome_cta=%s linha=%s",
+        "[0500_CTA_CRIADO] "
+        "rv_id=%s registro_id_alvo=%s linha_ref=%s acao=%s "
+        "cod_cta=%s nome_cta=%s linha=%s",
         rv.id,
+        registro_id_alvo,
         linha_ref,
+        rv.acao,
         cod_cta,
         nome_cta,
         linha_nova,
