@@ -22,56 +22,9 @@ _RX_NUM_BR = re.compile(r"^\d{1,3}(\.\d{3})*,\d+$|^\d+,\d+$|^\d+$")
 
 CFOPS_DEVOLUCAO_VENDA_ENTRADA = {"1202", "2202", "3202"}  # devolução de venda (mesma lógica da saída, mas NÃO é compra)
 
-def _cfop_gate_entrada_compra(cfop: str) -> bool:
-    cfop = (cfop or "").strip()
-    if not (cfop and len(cfop) == 4 and cfop.isdigit()):
-        return False
-    if cfop[0] not in ("1", "2"):
-        return False
-    # exclui devolução de venda (não é compra para comercialização)
-    if cfop in CFOPS_DEVOLUCAO_VENDA_ENTRADA:
-        return False
-    return True
 
 
 
-def _extrair_ncm_0200(dados: list[Any]) -> str:
-    for v in dados:
-        s = str(v or "").strip()
-        if re.fullmatch(r"\d{8}", s):
-            return s
-    return ""
-
-def get_registro_id(r) -> int:
-    # ORM
-    if hasattr(r, "id"):
-        try:
-            return int(getattr(r, "id") or 0)
-        except Exception:
-            pass
-
-    # Row (SQLAlchemy)
-    if hasattr(r, "_mapping"):
-        mp = r._mapping
-        for k in ("id", "registro_id"):
-            try:
-                v = mp.get(k)
-                if v is not None:
-                    return int(v)
-            except Exception:
-                continue
-
-    # dict
-    if isinstance(r, dict):
-        for k in ("id", "registro_id"):
-            try:
-                v = r.get(k)
-                if v is not None:
-                    return int(v)
-            except Exception:
-                continue
-
-    return 0
 
 def _somente_digitos(txt: str | None) -> str:
     return "".join(ch for ch in str(txt or "") if ch.isdigit())
@@ -85,42 +38,6 @@ def _safe_json(obj):
         return str(obj)
     return obj
 
-
-
-def _parece_cod_item(s: str) -> bool:
-    s = (s or "").strip()
-    if not s:
-        return False
-    # evita pegar números puros / valores BR
-    if _RX_NUM_BR.match(s):
-        return False
-    # evita UF comum e CFOP
-    if len(s) == 2 and s.isalpha():
-        return False
-    if len(s) == 4 and s.isdigit():  # CFOP típico
-        return False
-    return True
-
-def pick_cod_item_c170(dados: list) -> str:
-    """
-    No seu parser atual (EFD Contribuições), COD_ITEM está em dados[1].
-    Mantém fallback apenas por segurança.
-    """
-    try:
-        cand = str(dados[1] or "").strip() if len(dados) > 1 else ""
-        if cand:
-            return cand
-    except Exception:
-        pass
-
-    # fallback: tenta outros índices (caso algum layout/parse mude)
-    for idx in (2, 3, 0):
-        if len(dados) > idx:
-            cand = str(dados[idx] or "").strip()
-            if cand:
-                return cand
-
-    return ""
 
 
 def dec_br(v) -> Decimal:

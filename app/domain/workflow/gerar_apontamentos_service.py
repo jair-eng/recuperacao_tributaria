@@ -2,17 +2,12 @@ from sqlalchemy.orm import Session
 
 from app.db.models import ItemFiscalConsolidado, EfdApontamento
 from app.domain.ecd.ecd_gap_service import montar_contexto_gap_ecd_efd
+from app.domain.fiscal.catalogo.bloqueio_classificacao_por_dominio import item_bloqueado_classificacao
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
-from app.domain.fiscal.catalogo.classificacao_fiscal import classificar_item_fiscal
-from app.domain.fiscal.cenarios.avaliador_cenarios import avaliar_cenarios
-from app.domain.fiscal.cenarios.cenario_enriquecimento import (
-    enriquecer_cenario_com_enquadramento,)
 from app.domain.fiscal.diagnostico.diag_credito_nao_aproveitado import (
     diagnosticar_credito_nao_aproveitado,)
 from app.domain.fiscal.meta.meta_item_fiscal import (
-    meta_from_item_fiscal,
-)
-from app.domain.fiscal.score_fiscal_services import calcular_score_fiscal_contabil
+    meta_from_item_fiscal)
 from app.utils.cached_utils import FiscalRuntimeCache
 from app.utils.json_utils import json_safe
 from app.utils.numbers import calcular_impacto_estimado
@@ -80,8 +75,6 @@ def gerar_apontamentos_por_contexto(
     enquadramento_cache = {}
     score_cache = {}
 
-
-
     logger.info(
         "## [GERAR_AP v%s] catalogo carregado tempo=%.3fs ##",
         versao_id,
@@ -141,6 +134,21 @@ def gerar_apontamentos_por_contexto(
 
     for item in itens:
         meta = meta_from_item_fiscal(item)
+
+        # --------------------------------------------------
+        # Trava de contaminação
+        # --------------------------------------------------
+        if item_bloqueado_classificacao(
+                dominio=meta.get("dominio"),
+                descricao=(
+                        meta.get("descr_item")
+                        or meta.get("descricao_item")
+                        or meta.get("descricao")
+                        or ""
+                ),
+        ):
+            stats["bloqueado_contaminacao"] += 1
+            continue
 
         classificacao = cache.classificar(meta)
         stats["classificados"] += 1

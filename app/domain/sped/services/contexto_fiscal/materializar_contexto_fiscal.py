@@ -7,6 +7,7 @@ from app.db.models import (
     ItemFiscalConsolidado, Empresa
 )
 from app.domain.ecd.ecd_services import obter_contexto_contabil_por_cod_cta, aplicar_ctx_ecd_no_item
+from app.domain.fiscal.catalogo.bloqueio_classificacao_por_dominio import item_bloqueado_classificacao
 from app.domain.fiscal.catalogo.classificacao_fiscal import classificar_item_fiscal
 from app.domain.sped.contextos.contexto_competencia import montar_contexto_competencia
 from app.domain.sped.maps.icms_item_map import montar_mapa_icms_item, buscar_icms_item_em_mapa
@@ -332,6 +333,15 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             contabil_0500=ctx_competencia.contabil_0500,
         )
 
+        descricao_item = str(
+            get_safe(c170, 2) or ""
+        ).strip()
+
+        bloqueado_classificacao = item_bloqueado_classificacao(
+            dominio=dominio,
+            descricao=descricao_item,
+        )
+
         semantica_fiscal = {
             "contrib": classificar_cached(
                 dominio=dominio,
@@ -416,6 +426,12 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
                 "tem_item_icms": tem_item_icms,
                 "motivo_sem_match_item": motivo_sem_match_item,
                 "divergencias": divergencias,
+                "bloqueado_classificacao": bloqueado_classificacao,
+                "motivo_bloqueio_classificacao": (
+                    "DESCRICAO_CONTAMINANTE"
+                    if bloqueado_classificacao
+                    else None
+                ),
                 "semantica_fiscal": semantica_fiscal,
                 "comparativo_icms": {
                     "ncm_contrib": ncm_contrib,
@@ -561,6 +577,15 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             registro_id_ancora = None
             linha_ancora = None
 
+        descricao_item = str(
+            getattr(icms_item, "descricao", None) or ""
+        ).strip()
+
+        bloqueado_classificacao = item_bloqueado_classificacao(
+            dominio=dominio,
+            descricao=descricao_item,
+        )
+
         semantica_fiscal = {
             "contrib": None,
             "icms": classificar_cached(
@@ -657,6 +682,13 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
                 "linha_ancora": linha_ancora,
 
                 "semantica_fiscal": semantica_fiscal,
+
+                "bloqueado_classificacao": bloqueado_classificacao,
+                "motivo_bloqueio_classificacao": (
+                    "DESCRICAO_CONTAMINANTE"
+                    if bloqueado_classificacao
+                    else None
+                ),
             },
         )
 
