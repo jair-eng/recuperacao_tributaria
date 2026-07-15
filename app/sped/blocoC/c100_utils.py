@@ -99,6 +99,26 @@ def _fmt_decimal_2(v) -> str:
     d = d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return str(d).replace(".", ",")
 
+def recalcular_c990(linhas: list[str]) -> list[str]:
+    """
+    Recalcula QTD_LIN_C do C990.
+    """
+
+    qtd = 0
+    idx_c990 = None
+
+    for i, l in enumerate(linhas):
+        if l.startswith("|C"):
+            qtd += 1
+
+        if l.startswith("|C990|"):
+            idx_c990 = i
+
+    if idx_c990 is not None:
+        linhas[idx_c990] = f"|C990|{qtd}|"
+
+    return linhas
+
 def patch_c100_totais_imposto(
     campos: list[Any],
     total_pis: float,
@@ -188,51 +208,58 @@ def montar_linha_c100_de_icms(nf):
     return "|" + "|".join(campos) + "|"
 
 
-
-def garantir_c010_e_ajustar_c001(linhas: list[str], cnpj_estab: str) -> list[str]:
-    """
-    Garante a estrutura mínima do bloco C:
-    - Se houver C100/C170, C001 deve ser 0
-    - Se houver C100 e não houver C010, insere C010 após C001
-    """
-    tem_c100 = any(l.startswith("|C100|") for l in linhas)
-    idx_c001 = next((i for i, l in enumerate(linhas) if l.startswith("|C001|")), None)
-    idx_c010 = next((i for i, l in enumerate(linhas) if l.startswith("|C010|")), None)
-
-    if not tem_c100:
-        return linhas
-
-    # ajusta C001 para com movimento
-    if idx_c001 is not None:
-        linhas[idx_c001] = "|C001|0|"
-
-    # insere C010 se faltar
-    if idx_c001 is not None and idx_c010 is None:
-        linha_c010 = f"|C010|{cnpj_estab}|"
-        linhas.insert(idx_c001 + 1, linha_c010)
-
-    return linhas
-
 def garantir_estrutura_bloco_c(linhas: list[str]) -> list[str]:
-    """
-    Garante estrutura mínima válida do bloco C:
-    - Se houver C100/C170, C001 deve ser |C001|0|
-    - Se houver C100 e não houver C010, insere C010 após C001
-    """
     tem_c100 = any(l.startswith("|C100|") for l in linhas)
     if not tem_c100:
         return linhas
 
-    idx_c001 = next((i for i, l in enumerate(linhas) if l.startswith("|C001|")), None)
-    idx_c010 = next((i for i, l in enumerate(linhas) if l.startswith("|C010|")), None)
+    idx_primeiro_c100 = next(
+        (i for i, l in enumerate(linhas) if l.startswith("|C100|")),
+        None,
+    )
+
+    idx_c001 = next(
+        (i for i, l in enumerate(linhas) if l.startswith("|C001|")),
+        None,
+    )
+
+    idx_c010 = next(
+        (i for i, l in enumerate(linhas) if l.startswith("|C010|")),
+        None,
+    )
 
     if idx_c001 is not None:
         linhas[idx_c001] = "|C001|0|"
+
+    # C100/C170 entraram antes do C001 existente
+    if (
+        idx_primeiro_c100 is not None
+        and idx_c001 is not None
+        and idx_c001 > idx_primeiro_c100
+    ):
+        linha_c001 = linhas.pop(idx_c001)
+
+        idx_primeiro_c100 = next(
+            (i for i, l in enumerate(linhas) if l.startswith("|C100|")),
+            None,
+        )
+
+        linhas.insert(idx_primeiro_c100, linha_c001)
+
+    # recalcula depois do reposicionamento
+    idx_c001 = next(
+        (i for i, l in enumerate(linhas) if l.startswith("|C001|")),
+        None,
+    )
+
+    idx_c010 = next(
+        (i for i, l in enumerate(linhas) if l.startswith("|C010|")),
+        None,
+    )
 
     if idx_c001 is not None and idx_c010 is None:
         cnpj_estab = ""
 
-        # tenta 0000 primeiro
         for l in linhas:
             if l.startswith("|0000|"):
                 partes = l.strip("|").split("|")
@@ -240,7 +267,6 @@ def garantir_estrutura_bloco_c(linhas: list[str]) -> list[str]:
                     cnpj_estab = str(partes[8] or "").strip()
                 break
 
-        # fallback no 0140
         if not cnpj_estab:
             for l in linhas:
                 if l.startswith("|0140|"):
@@ -249,6 +275,9 @@ def garantir_estrutura_bloco_c(linhas: list[str]) -> list[str]:
                         cnpj_estab = str(partes[1] or "").strip()
                     break
 
-        linhas.insert(idx_c001 + 1, f"|C010|{cnpj_estab}|2|")
+        linhas.insert(
+            idx_c001 + 1,
+            f"|C010|{cnpj_estab}|2|",
+        )
 
     return linhas
