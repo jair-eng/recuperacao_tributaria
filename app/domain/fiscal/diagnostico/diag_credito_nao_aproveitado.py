@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-
 from app.Legacy.fiscal.settings_fiscais import CSTS_CREDITAVEIS
-from app.utils.numbers import dec_any
+from app.utils.numbers import dec_any, q2
+from decimal import Decimal
 
 
 def diagnosticar_credito_nao_aproveitado(
@@ -42,13 +42,24 @@ def diagnosticar_credito_nao_aproveitado(
     vl_pis = dec_any(meta.get("vl_pis"))
     vl_cofins = dec_any(meta.get("vl_cofins"))
 
+    aliq_pis_destino = dec_any(enquadramento.get("aliq_pis"))
+    aliq_cofins_destino = dec_any(enquadramento.get("aliq_cofins"))
+
+    vl_pis_esperado = q2(
+        vl_bc_pis * aliq_pis_destino / Decimal("100")
+    )
+
+    vl_cofins_esperado = q2(
+        vl_bc_cofins * aliq_cofins_destino / Decimal("100")
+    )
+
     if (
-        cst_pis_atual in csts_creditaveis
-        and cst_cofins_atual in csts_creditaveis
-        and vl_bc_pis > 0
-        and vl_bc_cofins > 0
-        and vl_pis > 0
-        and vl_cofins > 0
+            cst_pis_atual in csts_creditaveis
+            and cst_cofins_atual in csts_creditaveis
+            and vl_bc_pis > 0
+            and vl_bc_cofins > 0
+            and vl_pis == vl_pis_esperado
+            and vl_cofins == vl_cofins_esperado
     ):
         return None
 
@@ -66,11 +77,11 @@ def diagnosticar_credito_nao_aproveitado(
     if vl_bc_cofins <= 0:
         problemas.append("BASE_COFINS_ZERADA")
 
-    if vl_pis <= 0:
-        problemas.append("CREDITO_PIS_NAO_APROVEITADO")
+    if vl_pis != vl_pis_esperado:
+        problemas.append("CREDITO_PIS_DIVERGENTE")
 
-    if vl_cofins <= 0:
-        problemas.append("CREDITO_COFINS_NAO_APROVEITADO")
+    if vl_cofins != vl_cofins_esperado:
+        problemas.append("CREDITO_COFINS_DIVERGENTE")
 
     if not problemas:
         return None

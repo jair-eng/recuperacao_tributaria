@@ -109,6 +109,27 @@ def _chave_1100_1500(linha: str) -> tuple[str, str, str]:
         str(dados[3] or "").strip(),
     )
 
+def _chave_ordenacao_bloco_1(linha: str) -> tuple[int, str]:
+    reg, dados = _parse_reg_dados(linha)
+
+    try:
+        ordem_reg = int(reg)
+    except (TypeError, ValueError):
+        ordem_reg = 9999
+
+    periodo_ordem = ""
+
+    if reg in ("1100", "1500") and dados:
+        periodo_mmaaaa = str(dados[0] or "").strip()
+
+        if len(periodo_mmaaaa) == 6:
+            periodo_ordem = (
+                periodo_mmaaaa[2:6]
+                + periodo_mmaaaa[0:2]
+            )
+
+    return ordem_reg, periodo_ordem
+
 def _somar_saldo_v2_em_linha_1100_1500(
     linha: str,
     valor_add: Decimal,
@@ -281,9 +302,10 @@ def montar_bloco_1_com_estoque_v2(
                     )
                 )
 
+    linhas_resultado.sort(key=_chave_ordenacao_bloco_1)
+
     bloco = ["|1001|0|"]
     bloco.extend(linhas_resultado)
     bloco.append(f"|1990|{len(bloco) + 1}|")
 
     return bloco
-

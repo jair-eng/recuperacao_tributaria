@@ -559,8 +559,6 @@ def revisar_c170_global(
     motivo_codigo: str,
     apontamento_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    # 1) Garante hierarquia (pai_id)
-    popular_pai_id(db, versao_origem_id)
 
     # 2) Query base (ATENÇÃO: filtra origem SEM overlay pendente)
     query = (

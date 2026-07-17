@@ -426,8 +426,9 @@ def gerar_apontamentos_por_contexto(
     # --------------------------------------------------
     if novos_apontamentos:
         db.bulk_save_objects(novos_apontamentos)
-        cache_stats = cache.stats()
         db.flush()
+
+    cache_stats = cache.stats()
 
     logger.info(
         "## [GERAR_AP v%s] fim | total_itens=%s | total_diag=%s | "
