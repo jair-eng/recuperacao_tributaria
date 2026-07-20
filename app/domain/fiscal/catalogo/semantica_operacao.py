@@ -9,11 +9,18 @@ def eh_entrada(meta, catalogo):
 
     grupos = catalogo.grupos_cfop(cfop)
 
-
     return bool({
-        "CFOP_ENTRADA",
         "CFOP_ENTRADA_REVENDA",
         "CFOP_ENTRADA_INSUMO",
+    } & grupos)
+
+def eh_uso_consumo(meta, catalogo):
+
+    cfop = meta.get("cfop")
+
+    grupos = catalogo.grupos_cfop(cfop)
+
+    return bool({
         "CFOP_USO_CONSUMO",
     } & grupos)
 
@@ -120,4 +127,5 @@ def classificar_operacao_fiscal(
         "imobilizado": eh_imobilizado(meta, catalogo),
         "servico": eh_servico(meta, catalogo),
         "entrada_cafe": eh_entrada_cafe(meta, catalogo),
+        "uso_consumo": eh_uso_consumo(meta, catalogo),
     }

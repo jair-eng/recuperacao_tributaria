@@ -4,6 +4,8 @@ from typing import Any, Dict, Optional
 from app.Legacy.fiscal.settings_fiscais import CSTS_CREDITAVEIS
 from app.utils.numbers import dec_any, q2
 from decimal import Decimal
+import logging
+logger = logging.getLogger(__name__)
 
 
 def diagnosticar_credito_nao_aproveitado(
@@ -14,6 +16,34 @@ def diagnosticar_credito_nao_aproveitado(
 
     if not cenario or not cenario.get("ativo"):
         return None
+
+    codigo_cenario = (
+            cenario.get("cenario")
+            or cenario.get("codigo_cenario")
+            or ""
+    )
+
+    if codigo_cenario.startswith("TRANSP_USO_CONSUMO_"):
+        return {
+            "ativo": True,
+            "codigo": "CFOP_USO_CONSUMO",
+            "tipo": "SEM_ACAO",
+            "prioridade": "MEDIA",
+            "descricao": (
+                "Item relacionado à atividade da transportadora, mas escriturado "
+                "com CFOP de uso ou consumo. A apropriação do crédito depende de "
+                "análise fiscal e possível correção prévia da EFD ICMS/IPI."
+            ),
+            "meta": {
+                **meta,
+                "codigo_cenario": codigo_cenario,
+                "fundamento_legal": cenario.get("fundamento_legal") or [],
+                "justificativa_cenario": cenario.get("justificativa") or [],
+                "classificacao": classificacao,
+                "motivo_bloqueio": "CFOP_USO_CONSUMO",
+                "acao_automatica_permitida": False,
+            },
+        }
 
     enquadramento = cenario.get("enquadramento") or {}
 

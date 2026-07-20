@@ -71,7 +71,7 @@ def aplicar_corretiva_apontamento_v2(
             cache=cache,
         )
 
-    if status_cruzamento == "MATCH":
+    if status_cruzamento in {"MATCH", "SO_CONTRIB"}:
         return _aplicar_corretiva_match_patch_c170_v2(
             db=db,
             apontamento=apontamento,
@@ -349,6 +349,12 @@ def _aplicar_corretiva_match_patch_c170_v2(
     meta: Dict[str, Any],
     cache: dict | None = None,
 ) -> Dict[str, Any]:
+    logger.info(
+        "[MATCH_V2] status=%s ap=%s reg_c170=%s",
+        meta.get("status_cruzamento"),
+        apontamento.id,
+        meta.get("registro_id_c170"),
+    )
 
     versao_id = int(apontamento.versao_id)
     logger.info(
@@ -439,34 +445,18 @@ def _aplicar_corretiva_match_patch_c170_v2(
         "cst_pis": cst_pis_destino,
         "cst_cofins": cst_cofins_destino,
 
-        "vl_bc_pis": str(
-            meta.get("base_credito_sugerida")
-            or meta.get("vl_bc_pis_sugerida")
-            or meta.get("vl_item")
-            or ""
-        ),
+        # Não enviar base pronta.
+        # O patch_c170_campos calcula pela regra:
+        # VL_ITEM - VL_DESC - VL_ICMS
+        "vl_bc_pis": None,
         "aliq_pis": aliq_pis,
+        "vl_pis": None,
 
-        "vl_pis": str(
-            meta.get("pis_estimado")
-            or meta.get("vl_pis_sugerido")
-            or ""
-        ),
-
-        "vl_bc_cofins": str(
-            meta.get("base_credito_sugerida")
-            or meta.get("vl_bc_cofins_sugerida")
-            or meta.get("vl_item")
-            or ""
-        ),
+        "vl_bc_cofins": None,
         "aliq_cofins": aliq_cofins,
+        "vl_cofins": None,
 
-        "vl_cofins": str(
-            meta.get("cofins_estimado")
-            or meta.get("vl_cofins_sugerido")
-            or ""
-        ),
-         "meta_fiscal": {
+        "meta_fiscal": {
             **meta_fiscal,
             "codigo_cenario": codigo_cenario,
             "cenario": codigo_cenario,
@@ -494,13 +484,13 @@ def _aplicar_corretiva_match_patch_c170_v2(
             "natureza_credito_m": nat_bc_cred,
         },
 
-            "codigo_cenario": codigo_cenario,
-            "contexto": codigo_cenario,
-            "cod_cred": cod_cred,
-            "nat_bc_cred": nat_bc_cred,
-            "natureza_credito_m": nat_bc_cred,
-            "dominio": meta.get("dominio"),
-        }
+        "codigo_cenario": codigo_cenario,
+        "contexto": codigo_cenario,
+        "cod_cred": cod_cred,
+        "nat_bc_cred": nat_bc_cred,
+        "natureza_credito_m": nat_bc_cred,
+        "dominio": meta.get("dominio"),
+    }
 
     res = revisar_c170_lote(
         db,

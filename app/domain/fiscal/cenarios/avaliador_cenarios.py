@@ -4,13 +4,15 @@ from app.domain.fiscal.cenarios.cenario_cafe import cenario_cafe
 from app.domain.fiscal.cenarios.cenario_insumo_transportadora import cenario_insumo_transportadora
 from app.domain.fiscal.cenarios.cenario_insumo_cafe import cenario_insumo_cafe
 from app.domain.fiscal.cenarios.cenario_insumo_revenda_gas import cenario_insumo_revenda_gas
-from app.domain.fiscal.cenarios.cenario_ativo_imobilizado import cenario_ativo_imobilizado
+from app.domain.fiscal.cenarios.cenario_uso_consumo_transportadora import cenario_uso_consumo_transportadora
+
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 CENARIOS_FISCAIS = [
+    cenario_uso_consumo_transportadora,
     cenario_posto_credito_normal,
     cenario_insumo_cafe,
     cenario_insumo_revenda_gas,

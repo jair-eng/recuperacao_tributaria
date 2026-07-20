@@ -135,7 +135,7 @@ class ApontamentoService:
                     ap.item_fiscal_consolidado_id,
                 )
 
-                if status_cruzamento not in {"SO_ICMS", "MATCH"}:
+                if status_cruzamento not in {"SO_ICMS", "SO_CONTRIB", "MATCH"}:
                     total_v2_skips += 1
                     continue
 

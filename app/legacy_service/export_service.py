@@ -193,6 +193,19 @@ def exportar_sped(
                 "0.00")
 
             base_liquida = vl_item - vl_desc - vl_icms
+
+            ############tirar depois do teste.
+            vl_bc_pis = dec_br(dados[LAYOUT_C170.idx_vl_bc_pis])
+
+            if abs(vl_bc_pis - base_liquida) > Decimal("0.01"):
+                logger.warning(
+                    "[BASE_DIVERGENTE] rid=%s cfop=%s calc=%s bc_pis=%s",
+                    rid_int,
+                    cfop,
+                    base_liquida,
+                    vl_bc_pis,
+                )
+            ############
             if base_liquida <= 0:
                 continue
 

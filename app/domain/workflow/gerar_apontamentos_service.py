@@ -286,41 +286,69 @@ def gerar_apontamentos_por_contexto(
                 or []
         )
 
-        if not tipo_normalizacao and status_cruzamento == "SO_ICMS":
-            tipo_normalizacao = (
-                "CONTRIB_SEM_C170"
-                if registro_id_c100
-                else "CONTRIB_SEM_C100_C170"
-            )
+        tipo_diag = str(diag.get("tipo") or "").strip().upper()
 
-        if tipo_normalizacao == "CONTRIB_SEM_C170":
-            tipo_corretiva_v2 = "INSERIR_C170_EM_C100_EXISTENTE"
-            registro_id_alvo = registro_id_c100
-            linha_ref = (
-                meta_diag.get("linha_c100")
-                or getattr(item, "linha_c100", None)
-            )
+        acao_automatica_permitida = meta_diag.get(
+            "acao_automatica_permitida",
+            tipo_diag == "OPORTUNIDADE",
+        )
 
-        elif tipo_normalizacao == "CONTRIB_SEM_C100_C170":
-            tipo_corretiva_v2 = "INSERIR_C100_C170"
+        # --------------------------------------------------
+        # 1) Diagnóstico sem ação automática
+        # --------------------------------------------------
+        if not acao_automatica_permitida or tipo_diag == "SEM_ACAO":
+            tipo_normalizacao = None
+            tipo_corretiva_v2 = None
             registro_id_alvo = None
             linha_ref = None
-
-        elif status_cruzamento == "MATCH" and registro_id_c170:
-            tipo_corretiva_v2 = "PATCH_C170_EXISTENTE"
-            registro_id_alvo = registro_id_c170
-            linha_ref = (
-                meta_diag.get("linha_c170")
-                or getattr(item, "linha_c170", None)
-            )
 
         else:
-            tipo_corretiva_v2 = "NAO_SUPORTADO"
+            # --------------------------------------------------
+            # 2) Infere normalização apenas para oportunidades
+            # --------------------------------------------------
+            if not tipo_normalizacao and status_cruzamento == "SO_ICMS":
+                tipo_normalizacao = (
+                    "CONTRIB_SEM_C170"
+                    if registro_id_c100
+                    else "CONTRIB_SEM_C100_C170"
+                )
+
+            # --------------------------------------------------
+            # 3) Define a mecânica da corretiva
+            # --------------------------------------------------
+            if tipo_normalizacao == "CONTRIB_SEM_C170":
+                tipo_corretiva_v2 = "INSERIR_C170_EM_C100_EXISTENTE"
+                registro_id_alvo = registro_id_c100
+                linha_ref = (
+                        meta_diag.get("linha_c100")
+                        or getattr(item, "linha_c100", None)
+                )
+
+            elif tipo_normalizacao == "CONTRIB_SEM_C100_C170":
+                tipo_corretiva_v2 = "INSERIR_C100_C170"
+                registro_id_alvo = None
+                linha_ref = None
+
+            elif registro_id_c170:
+                tipo_corretiva_v2 = "PATCH_C170_EXISTENTE"
+                registro_id_alvo = registro_id_c170
+                linha_ref = (
+                        meta_diag.get("linha_c170")
+                        or getattr(item, "linha_c170", None)
+                )
+
+            else:
+                tipo_corretiva_v2 = "NAO_SUPORTADO"
+                registro_id_alvo = None
+                linha_ref = None
+
+        # Se o materializar já definiu a corretiva/âncora, ele é a fonte principal.
+        if not acao_automatica_permitida or tipo_diag == "SEM_ACAO":
+            tipo_corretiva_v2 = None
             registro_id_alvo = None
             linha_ref = None
 
-        # Se o materializar já definiu a corretiva/âncora, ele é a fonte principal.
-        if tipo_corretiva_v2_meta:
+        elif tipo_corretiva_v2_meta:
             tipo_corretiva_v2 = tipo_corretiva_v2_meta
 
         if registro_id_ancora_meta is not None:
@@ -329,7 +357,11 @@ def gerar_apontamentos_por_contexto(
         if linha_ancora_meta is not None:
             linha_ref = linha_ancora_meta
 
-        stats[f"tipo_corretiva:{tipo_corretiva_v2}"] += 1
+        if tipo_corretiva_v2:
+            stats[f"tipo_corretiva:{tipo_corretiva_v2}"] += 1
+        else:
+            stats[f"tipo:{tipo_diag or 'SEM_TIPO'}"] += 1
+
         stats[f"status:{status_cruzamento}"] += 1
 
         cst_pis_destino = enquadramento_diag.get("cst_pis_destino")
