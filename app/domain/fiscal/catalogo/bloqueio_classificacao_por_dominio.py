@@ -50,7 +50,11 @@ BLOQUEIOS_CLASSIFICACAO = {
             "LIMPA VIDRO",
             "TOMADA",
             "KEYSTONE",
+            "AROMATIZADOR",
+            "ODORIZADOR",
             "TINTA SPRAY",
+            "BOM AR",
+            "LAVANDA",
                     },
     },
 

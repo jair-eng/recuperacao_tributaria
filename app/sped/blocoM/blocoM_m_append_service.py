@@ -102,8 +102,8 @@ def inserir_creditos_no_bloco_m_original(
     # -----------------------------
     # 1) Indexa deltas do append
     # -----------------------------
-    delta_m100: Dict[str, Dict[str, Decimal]] = {}
-    delta_m500: Dict[str, Dict[str, Decimal]] = {}
+    delta_m100: Dict[tuple[str, Decimal], Dict[str, Decimal]] = {}
+    delta_m500: Dict[tuple[str, Decimal], Dict[str, Decimal]] = {}
     delta_m105: Dict[tuple[str, str], Decimal] = {}
     delta_m505: Dict[tuple[str, str], Decimal] = {}
 
@@ -115,24 +115,41 @@ def inserir_creditos_no_bloco_m_original(
         if reg == "M100":
             cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
             base = _dec_m(dados[2] if len(dados) > 2 else "0")
+            aliq = _dec_m(dados[3] if len(dados) > 3 else "0")
             cred = _dec_m(dados[6] if len(dados) > 6 else "0")
 
+            key = (cod_cred, aliq)
+
             if cod_cred:
-                delta_m100.setdefault(cod_cred, {"base": Decimal("0.00"), "cred": Decimal("0.00")})
-                delta_m100[cod_cred]["base"] += base
-                delta_m100[cod_cred]["cred"] += cred
+                delta_m100.setdefault(
+                    key,
+                    {
+                        "base": Decimal("0.00"),
+                        "cred": Decimal("0.00"),
+                    },
+                )
+                delta_m100[key]["base"] += base
+                delta_m100[key]["cred"] += cred
             else:
                 linhas_append_restantes.append(ln)
+
 
         elif reg == "M500":
             cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
             base = _dec_m(dados[2] if len(dados) > 2 else "0")
+            aliq = _dec_m(dados[3] if len(dados) > 3 else "0")
             cred = _dec_m(dados[6] if len(dados) > 6 else "0")
-
+            key = (cod_cred, aliq)
             if cod_cred:
-                delta_m500.setdefault(cod_cred, {"base": Decimal("0.00"), "cred": Decimal("0.00")})
-                delta_m500[cod_cred]["base"] += base
-                delta_m500[cod_cred]["cred"] += cred
+                delta_m500.setdefault(
+                    key,
+                    {
+                        "base": Decimal("0.00"),
+                        "cred": Decimal("0.00"),
+                    },
+                )
+                delta_m500[key]["base"] += base
+                delta_m500[key]["cred"] += cred
             else:
                 linhas_append_restantes.append(ln)
 
@@ -163,8 +180,8 @@ def inserir_creditos_no_bloco_m_original(
     # 2) Mescla nas linhas originais
     # -----------------------------
     out: List[str] = []
-    encontrou_m100: set[str] = set()
-    encontrou_m500: set[str] = set()
+    encontrou_m100: set[tuple[str, Decimal]] = set()
+    encontrou_m500: set[tuple[str, Decimal]] = set()
     encontrou_m105: set[tuple[str, str]] = set()
     encontrou_m505: set[tuple[str, str]] = set()
 
@@ -176,7 +193,10 @@ def inserir_creditos_no_bloco_m_original(
 
         if reg == "M100":
             cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
-            delta = delta_m100.get(cod_cred)
+            aliq = _dec_m(dados[3] if len(dados) > 3 else "0")
+
+            key = (cod_cred, aliq)
+            delta = delta_m100.get(key)
 
             if delta:
                 base = _q2(delta["base"])
@@ -200,12 +220,15 @@ def inserir_creditos_no_bloco_m_original(
                     dados[12] = _fmt_br(vl_cred_disp)
                     dados[13] = "0,00"
 
-                encontrou_m100.add(cod_cred)
+                encontrou_m100.add(key)
                 ln = _join_m("M100", dados)
+
 
         elif reg == "M500":
             cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
-            delta = delta_m500.get(cod_cred)
+            aliq = _dec_m(dados[3] if len(dados) > 3 else "0")
+            key = (cod_cred, aliq)
+            delta = delta_m500.get(key)
 
             if delta:
                 base = _q2(delta["base"])
@@ -229,7 +252,7 @@ def inserir_creditos_no_bloco_m_original(
                     dados[12] = _fmt_br(vl_cred_disp)
                     dados[13] = "0,00"
 
-                encontrou_m500.add(cod_cred)
+                encontrou_m500.add(key)
                 ln = _join_m("M500", dados)
 
         elif reg == "M105":
@@ -285,7 +308,9 @@ def inserir_creditos_no_bloco_m_original(
 
         if reg == "M100":
             cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
-            if cod_cred and cod_cred not in encontrou_m100:
+            aliq = _dec_m(dados[3] if len(dados) > 3 else "0")
+            key = (cod_cred, aliq)
+            if cod_cred and key not in encontrou_m100:
                 append_pis.append(ln)
 
         elif reg == "M105":
@@ -296,7 +321,9 @@ def inserir_creditos_no_bloco_m_original(
 
         elif reg == "M500":
             cod_cred = str(dados[0] if len(dados) > 0 else "").strip()
-            if cod_cred and cod_cred not in encontrou_m500:
+            aliq = _dec_m(dados[3] if len(dados) > 3 else "0")
+            key = (cod_cred, aliq)
+            if cod_cred and key not in encontrou_m500:
                 append_cofins.append(ln)
 
         elif reg == "M505":

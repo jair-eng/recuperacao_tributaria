@@ -8,6 +8,7 @@ from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_n
     _resolver_ancora_bloco_c_fim, inserir_notas_icms_ausentes_na_efd_v2
 from app.sped.blocoC.listar_c100_ausentes_no_contribuicoes import _nf_icms_pf_skip, _extrair_ind_oper_cod_sit_do_nf
 from app.sped.bloco_0.bloco_0_0190_0200_agregador import _garantir_mestres_para_notas_elegiveis
+from app.sped.logic.consolidador import popular_pai_id
 from app.utils.numbers import fmt_aliq_sped
 from app.utils.sped import montar_cache_mestres_logicos
 from app.utils.strings import only_digits
@@ -97,7 +98,6 @@ class ApontamentoService:
                 "[DEBUG APS_V2] total=%s",
                 len(aps_v2),
             )
-
             tipos = {}
 
             for ap in aps_v2:
@@ -110,6 +110,8 @@ class ApontamentoService:
                 tipos,
             )
             #######
+            # Antes de começar a aplicar as corretivas PATCH_C170_EXISTENTE
+            popular_pai_id(db, versao_id)
 
             cache_corretiva_v2 = {
                 "cache_mestres": montar_cache_mestres_logicos(
@@ -135,7 +137,7 @@ class ApontamentoService:
                     ap.item_fiscal_consolidado_id,
                 )
 
-                if status_cruzamento not in {"SO_ICMS", "SO_CONTRIB", "MATCH"}:
+                if status_cruzamento not in {"SO_ICMS", "MATCH"}:
                     total_v2_skips += 1
                     continue
 

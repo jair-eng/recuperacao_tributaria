@@ -21,7 +21,7 @@ def gerar_apontamentos_por_contexto(
     db: Session,
     versao_id: int,
 ):
-    t0 = time.perf_counter()
+    t_etapa = time.perf_counter()
     logger.info("## [GERAR_AP v%s] inicio ##", versao_id)
 
     # --------------------------------------------------
@@ -36,13 +36,6 @@ def gerar_apontamentos_por_contexto(
     total_itens = len(itens)
     empresa_id = itens[0].empresa_id if itens else None
     periodo = itens[0].periodo if itens else None
-
-    logger.info(
-        "## [GERAR_AP v%s] itens carregados=%s tempo=%.3fs ##",
-        versao_id,
-        total_itens,
-        time.perf_counter() - t0,
-    )
 
     # --------------------------------------------------
     # 2) Contexto GAP ECD
@@ -61,12 +54,13 @@ def gerar_apontamentos_por_contexto(
         "## [GERAR_AP v%s] contexto_gap_ecd=%s tempo=%.3fs ##",
         versao_id,
         bool(contexto_gap_ecd),
-        time.perf_counter() - t0,
+        time.perf_counter() - t_etapa,
     )
 
     # --------------------------------------------------
     # 3) Catálogo/cache
     # --------------------------------------------------
+    t_etapa = time.perf_counter()
     catalogo = carregar_catalogo_fiscal(db)
     cache = FiscalRuntimeCache(catalogo=catalogo)
 
@@ -78,14 +72,14 @@ def gerar_apontamentos_por_contexto(
     logger.info(
         "## [GERAR_AP v%s] catalogo carregado tempo=%.3fs ##",
         versao_id,
-        time.perf_counter() - t0,
+        time.perf_counter() - t_etapa,
     )
 
     # --------------------------------------------------
     # 4) Limpa apontamentos V2 antigos em lotes
     # --------------------------------------------------
     total_del = 0
-
+    t_etapa = time.perf_counter()
     while True:
         ids = [
             row[0]
@@ -113,10 +107,9 @@ def gerar_apontamentos_por_contexto(
         db.flush()
 
     logger.info(
-        "## [GERAR_AP v%s] apontamentos V2 antigos apagados=%s tempo=%.3fs ##",
+        "## [GERAR_AP v%s] LIMPEZA_AP duração=%.3fs ##",
         versao_id,
-        total_del,
-        time.perf_counter() - t0,
+        time.perf_counter() - t_etapa,
     )
 
     # --------------------------------------------------
@@ -132,6 +125,7 @@ def gerar_apontamentos_por_contexto(
         else {}
     )
 
+    t_loop = time.perf_counter()
     for item in itens:
         meta = meta_from_item_fiscal(item)
 
@@ -237,6 +231,10 @@ def gerar_apontamentos_por_contexto(
             meta_diag.get("status_cruzamento")
             or getattr(item, "status_cruzamento", None)
         )
+
+        if str(status_cruzamento or "").upper() == "SO_CONTRIB":
+            stats["so_contrib_sem_acao"] += 1
+            continue
 
         registro_id_c100 = (
             meta_diag.get("registro_id_c100")
@@ -445,12 +443,9 @@ def gerar_apontamentos_por_contexto(
         )
 
     logger.info(
-        "## [GERAR_AP v%s] loop fim | total_diag=%s | novos=%s | stats=%s | tempo=%.3fs ##",
+        "## [GERAR_AP v%s] LOOP duração=%.3fs ##",
         versao_id,
-        total_diag,
-        len(novos_apontamentos),
-        dict(stats),
-        time.perf_counter() - t0,
+        time.perf_counter() - t_loop,
     )
 
     # --------------------------------------------------
@@ -464,7 +459,7 @@ def gerar_apontamentos_por_contexto(
 
     logger.info(
         "## [GERAR_AP v%s] fim | total_itens=%s | total_diag=%s | "
-        "cache_classif=%s | cache_cenario=%s | cache_enq=%s | cache_score=%s | tempo=%.3fs ##",
+        "cache_classif=%s | cache_cenario=%s | cache_enq=%s | cache_score=%s ",
         versao_id,
         total_itens,
         total_diag,
@@ -472,7 +467,7 @@ def gerar_apontamentos_por_contexto(
         cache_stats["cache_cenario"],
         cache_stats["cache_enquadramento"],
         cache_stats["cache_score"],
-        time.perf_counter() - t0,
+
     )
 
     db.commit()

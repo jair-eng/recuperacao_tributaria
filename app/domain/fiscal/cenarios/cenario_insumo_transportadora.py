@@ -9,6 +9,8 @@ def cenario_insumo_transportadora(
     meta: Dict[str, Any],
     classificacao: Dict[str, Any],
 ) -> Dict[str, Any]:
+    TRANSP_GASOLINA_COMO_INSUMO = False
+    TRANSP_ETANOL_COMO_INSUMO = False
 
     dominio = meta.get("dominio")
     operacao = classificacao["operacao"]
@@ -66,7 +68,7 @@ def cenario_insumo_transportadora(
         ]
         return out
 
-    if produto["gasolina"]:
+    if produto["gasolina"] and TRANSP_GASOLINA_COMO_INSUMO:
 
         periodo = (
                 meta.get("periodo")
@@ -89,7 +91,7 @@ def cenario_insumo_transportadora(
         ]
         return out
 
-    if produto["etanol"]:
+    if produto["etanol"] and TRANSP_ETANOL_COMO_INSUMO:
         out["ativo"] = True
         out["cenario"] = "TRANSP_INSUMO_ETANOL"
         out["fundamento_legal"] = ["TRANSP_INSUMO_ETANOL"]

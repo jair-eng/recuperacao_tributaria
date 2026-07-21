@@ -64,6 +64,12 @@ def diagnosticar_credito_nao_aproveitado(
     cst_pis_atual = str(meta.get("cst_pis") or "").zfill(2)
     cst_cofins_atual = str(meta.get("cst_cofins") or "").zfill(2)
 
+    if (
+            cst_pis_atual in csts_creditaveis
+            and cst_cofins_atual in csts_creditaveis
+    ):
+        return None
+
     cst_pis_destino = str(enquadramento.get("cst_pis_destino") or "").zfill(2)
     cst_cofins_destino = str(enquadramento.get("cst_cofins_destino") or "").zfill(2)
 
@@ -83,15 +89,10 @@ def diagnosticar_credito_nao_aproveitado(
         vl_bc_cofins * aliq_cofins_destino / Decimal("100")
     )
 
-    if (
-            cst_pis_atual in csts_creditaveis
-            and cst_cofins_atual in csts_creditaveis
-            and vl_bc_pis > 0
-            and vl_bc_cofins > 0
-            and vl_pis == vl_pis_esperado
-            and vl_cofins == vl_cofins_esperado
-    ):
-        return None
+    vl_item = dec_any(meta.get("vl_item"))
+    vl_desc = dec_any(meta.get("vl_desc"))
+
+    base_economica = q2(vl_item - vl_desc)
 
     problemas = []
 

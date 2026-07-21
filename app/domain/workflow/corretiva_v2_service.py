@@ -71,7 +71,7 @@ def aplicar_corretiva_apontamento_v2(
             cache=cache,
         )
 
-    if status_cruzamento in {"MATCH", "SO_CONTRIB"}:
+    if status_cruzamento in {"MATCH"}:
         return _aplicar_corretiva_match_patch_c170_v2(
             db=db,
             apontamento=apontamento,
@@ -498,6 +498,7 @@ def _aplicar_corretiva_match_patch_c170_v2(
         alteracoes=[alteracao],
         motivo_codigo="CREDITO_NAO_APROVEITADO_V2",
         apontamento_id=int(apontamento.id),
+        garantir_hierarquia=False,
     )
 
     total_alterado = int(res.get("total_alterado") or 0)

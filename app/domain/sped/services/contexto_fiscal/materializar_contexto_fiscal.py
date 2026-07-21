@@ -242,6 +242,8 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
     novos_items = []
     itens_contrib_materializados = []
     chaves_contrib = set()
+    itens_contrib_por_chave = {}
+    ids_icms_matcheados = set()
 
     for c100_atual, reg in registros_c170:
         c100 = campos_json(c100_atual.conteudo_json)
@@ -268,7 +270,18 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
             chave_nfe=chave_nfe,
             num_item=num_item,
             cod_item=cod_item,
+            vl_item=dec_any(get_safe(c170, 5)),
+            ids_usados=ids_icms_matcheados,
         )
+
+        if icms_item is not None:
+            ids_icms_matcheados.add(int(icms_item.id))
+
+        itens_contrib_por_chave.setdefault(chave_nfe, []).append({
+            "num_item": num_item,
+            "cod_item": cod_item,
+            "vl_item": dec_any(get_safe(c170, 5)),
+        })
 
         tem_no_icms = icms_item is not None
         tem_nf_icms = bool(chave_nfe and chave_nfe in chaves_nf_icms)
@@ -515,14 +528,44 @@ def materializar_contexto_fiscal(db: Session, versao_id: int):
         num_item_icms = str(icms_item.num_item or "").strip()
         cod_item_icms = str(icms_item.cod_item or "").strip()
 
+        if int(icms_item.id) in ids_icms_matcheados:
+            continue
+
         chave_icms = (
             chave_nfe_icms,
             num_item_icms,
             cod_item_icms,
         )
 
-        # Se já existe este item na EFD Contribuições, não é SO_ICMS.
+        # 1 Se já existe este item na EFD Contribuições, não é SO_ICMS.
         if chave_icms in chaves_contrib:
+            continue
+
+        # 2) Trava NF 1x1:
+        # se existe exatamente um item de cada lado na mesma NF,
+        # não tratar o item do ICMS como SO_ICMS.
+        itens_contrib_nf = (
+                itens_contrib_por_chave.get(chave_nfe_icms)
+                or []
+        )
+
+        itens_icms_nf = (
+                mapa_icms.get("por_chave", {}).get(chave_nfe_icms)
+                or []
+        )
+
+        if len(itens_contrib_nf) == 1 and len(itens_icms_nf) == 1:
+            logger.info(
+                "[CTX_MATCH_1X1] chave=%s | "
+                "icms_num=%s icms_cod=%s | "
+                "contrib_num=%s contrib_cod=%s | "
+                "SO_ICMS bloqueado",
+                chave_nfe_icms,
+                num_item_icms,
+                cod_item_icms,
+                itens_contrib_nf[0].get("num_item"),
+                itens_contrib_nf[0].get("cod_item"),
+            )
             continue
 
         nf_base = getattr(icms_item, "base", None)

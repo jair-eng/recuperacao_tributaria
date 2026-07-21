@@ -298,6 +298,7 @@ def revisar_c170_lote(
     fator_base_credito: Optional[float] = None,
     aliq_pis: Optional[str] = None,
     aliq_cofins: Optional[str] = None,
+    garantir_hierarquia: bool = True,
 ) -> Dict[str, Any]:
     """
     Executa a revisão em lote dos registros C170 e consolida os totais nos pais (C100).
@@ -316,8 +317,10 @@ def revisar_c170_lote(
     total_erros = 0
     erros_detalhe: List[Dict[str, Any]] = []  # top 10
 
-    # Garante hierarquia pai_id populada
-    popular_pai_id(db, versao_origem_id)
+    # Garante hierarquia pai_id populada.
+    # Por padrão mantém o comportamento legado.
+    if garantir_hierarquia:
+        popular_pai_id(db, versao_origem_id)
 
     # ✅ mapa estrutural (estilo Foto): C170 -> último C100 anterior (por linha)
     rows_min = (
