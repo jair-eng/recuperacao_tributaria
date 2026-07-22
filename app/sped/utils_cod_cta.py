@@ -203,8 +203,33 @@ def _tipo_conta_0500(nome_cta: str | None) -> str | None:
     if not nome:
         return None
 
+    # --------------------------------------------------------
+    # Contas de saída/receita não podem alimentar C170 de entrada
+    # --------------------------------------------------------
+    termos_receita_saida = (
+        "RECEITA",
+        "RECEITAS",
+        "VENDA",
+        "VENDAS",
+        "FATURAMENTO",
+        "RESULTADO",
+    )
+
+    if any(termo in nome for termo in termos_receita_saida):
+        return "RECEITA"
+
     if "COMBUST" in nome or "LUBRIFIC" in nome:
         return "COMBUSTIVEL"
+
+    termos_mercadoria_revenda = (
+        "MERCADORIA",
+        "MERCADORIAS",
+        "ESTOQUE DE MERCADORIA",
+        "ESTOQUE DE MERCADORIAS",
+    )
+
+    if any(termo in nome for termo in termos_mercadoria_revenda):
+        return "MERCADORIA_REVENDA"
 
     termos_insumo = (
         "INSUMO",
@@ -218,7 +243,6 @@ def _tipo_conta_0500(nome_cta: str | None) -> str | None:
         return "INSUMOS"
 
     return None
-
 
 def _unidade_conta_0500(nome_cta: str | None) -> tuple[str, str | None]:
     """

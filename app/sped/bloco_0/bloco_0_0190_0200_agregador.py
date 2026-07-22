@@ -184,33 +184,6 @@ def _resolver_ancora_mestre_na_matriz(
         linha_0140,
     )
 
-def _resolver_ancora_0500_antes_0990(
-    db: Session,
-    *,
-    versao_origem_id: int,
-) -> tuple[int | None, int]:
-    reg_0990 = (
-        db.query(EfdRegistro)
-        .filter(
-            EfdRegistro.versao_id == int(versao_origem_id),
-            EfdRegistro.reg == "0990",
-        )
-        .order_by(EfdRegistro.linha.asc())
-        .first()
-    )
-
-    if reg_0990:
-        return (
-            getattr(reg_0990, "id", None),
-            int(getattr(reg_0990, "linha", 0) or 0),
-        )
-
-    # fallback: mantém o comportamento atual se o arquivo estiver estranho
-    return _resolver_ancora_bloco0_mestres_icms_ipi(
-        db,
-        versao_origem_id=versao_origem_id,
-    )
-
 
 def garantir_0190_para_item(
     db: Session,
@@ -363,6 +336,74 @@ def garantir_0200_para_item(
         cache_mestres["0200"].add(cod_item_final)
     return cod_item_final
 
+def _resolver_ancora_0500_bloco0(
+    db: Session,
+    *,
+    versao_origem_id: int,
+) -> tuple[int | None, int, str]:
+
+    # 1) Se já existem 0500, insere após o último.
+    reg_0500 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0500",
+        )
+        .order_by(EfdRegistro.linha.desc())
+        .first()
+    )
+
+    if reg_0500:
+        return (
+            getattr(reg_0500, "id", None),
+            int(getattr(reg_0500, "linha", 0) or 0),
+            "INSERT_AFTER",
+        )
+
+    # 2) Sem 0500: insere antes do 0900, se existir.
+    reg_0900 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0900",
+        )
+        .order_by(EfdRegistro.linha.asc())
+        .first()
+    )
+
+    if reg_0900:
+        return (
+            getattr(reg_0900, "id", None),
+            int(getattr(reg_0900, "linha", 0) or 0),
+            "INSERT_BEFORE",
+        )
+
+    # 3) Sem 0500 e sem 0900: antes do encerramento do Bloco 0.
+    reg_0990 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0990",
+        )
+        .order_by(EfdRegistro.linha.asc())
+        .first()
+    )
+
+    if reg_0990:
+        return (
+            getattr(reg_0990, "id", None),
+            int(getattr(reg_0990, "linha", 0) or 0),
+            "INSERT_BEFORE",
+        )
+
+    # 4) Arquivo estruturalmente incompleto.
+    registro_id, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
+        db,
+        versao_origem_id=versao_origem_id,
+    )
+
+    return registro_id, linha_ref, "INSERT_AFTER"
+
 
 def garantir_0500_conta_padrao(
     db: Session,
@@ -383,7 +424,7 @@ def garantir_0500_conta_padrao(
     ):
         return cod_cta
 
-    registro_id_alvo, linha_ref = _resolver_ancora_0500_antes_0990(
+    registro_id_alvo, linha_ref, acao = _resolver_ancora_0500_bloco0(
         db,
         versao_origem_id=versao_origem_id,
     )
@@ -396,7 +437,7 @@ def garantir_0500_conta_padrao(
         versao_revisada_id=None,
         registro_id=registro_id_alvo,
         reg="0500",
-        acao="INSERT_BEFORE",
+        acao=acao,
         revisao_json={
             "linha_nova": linha_nova,
             "linha_referencia": int(linha_ref or 0),
