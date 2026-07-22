@@ -4,7 +4,7 @@ from typing import Any, List, Tuple
 from decimal import Decimal
 from app.utils.numbers import dec_any, q2
 from app.Legacy.fiscal.regras.helpers.elegibilidade_dominio import resolver_cst_credito_por_dominio
-from app.Legacy.fiscal.settings_fiscais import CSTS_TRIB_NCUM
+from app.Legacy.fiscal.settings_fiscais import CSTS_CREDITAVEIS
 from dataclasses import dataclass
 from app.sped.layouts.c170 import LAYOUT_C170
 from app.utils.numbers import fmt_aliq_sped
@@ -15,7 +15,7 @@ _RE_CST = re.compile(r"^\d{2}$")
 
 # --- Funções Auxiliares de Cálculo e Formatação ---
 
-CSTS_CREDITAVEIS = CSTS_TRIB_NCUM;
+CSTS_CREDITAVEIS = CSTS_CREDITAVEIS;
 
 def _get_dados_list(dados: Any) -> List[Any]:
     if dados is None:

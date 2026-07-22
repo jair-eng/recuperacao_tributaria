@@ -25,7 +25,7 @@ def _resolver_ancora_bloco0_mestres_icms_ipi(
     *,
     versao_origem_id: int,
 ) -> tuple[int | None, int]:
-    # âncora estrutural estável: último 0140 original
+    # âncora estrutural estável: primeiro 0140 original
     reg = (
         db.query(EfdRegistro)
         .filter(
@@ -54,6 +54,136 @@ def _resolver_ancora_bloco0_mestres_icms_ipi(
             return getattr(reg, "id", None), int(getattr(reg, "linha", 0) or 0)
 
     return None, 0
+
+def _resolver_intervalo_0140_matriz(
+    db: Session,
+    *,
+    versao_origem_id: int,
+) -> tuple[EfdRegistro | None, int]:
+    """
+    Retorna:
+      - o primeiro 0140, que hoje representa a matriz;
+      - a linha do próximo 0140 ou do 0990.
+    """
+
+    reg_0140 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0140",
+        )
+        .order_by(EfdRegistro.linha.asc())
+        .first()
+    )
+
+    if not reg_0140:
+        return None, 0
+
+    linha_0140 = int(getattr(reg_0140, "linha", 0) or 0)
+
+    proximo_0140 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "0140",
+            EfdRegistro.linha > linha_0140,
+        )
+        .order_by(EfdRegistro.linha.asc())
+        .first()
+    )
+
+    if proximo_0140:
+        linha_limite = int(getattr(proximo_0140, "linha", 0) or 0)
+    else:
+        reg_0990 = (
+            db.query(EfdRegistro)
+            .filter(
+                EfdRegistro.versao_id == int(versao_origem_id),
+                EfdRegistro.reg == "0990",
+                EfdRegistro.linha > linha_0140,
+            )
+            .order_by(EfdRegistro.linha.asc())
+            .first()
+        )
+
+        linha_limite = int(
+            getattr(reg_0990, "linha", 0) or 0
+        ) if reg_0990 else 0
+
+    return reg_0140, linha_limite
+
+
+def _resolver_ancora_mestre_na_matriz(
+    db: Session,
+    *,
+    versao_origem_id: int,
+    reg_alvo: str,
+) -> tuple[int | None, int]:
+    """
+    Localiza a âncora original adequada dentro do primeiro 0140,
+    atualmente tratado como estabelecimento matriz.
+
+    Regras:
+      0190:
+        1. último 0190 original;
+        2. último 0150 original;
+        3. próprio 0140.
+
+      0200:
+        1. último 0200 original;
+        2. último 0190 original;
+        3. último 0150 original;
+        4. próprio 0140.
+    """
+
+    reg_0140, linha_limite = _resolver_intervalo_0140_matriz(
+        db,
+        versao_origem_id=versao_origem_id,
+    )
+
+    if not reg_0140:
+        return _resolver_ancora_bloco0_mestres_icms_ipi(
+            db,
+            versao_origem_id=versao_origem_id,
+        )
+
+    linha_0140 = int(getattr(reg_0140, "linha", 0) or 0)
+
+    if reg_alvo == "0190":
+        prioridades = ("0190", "0150")
+    elif reg_alvo == "0200":
+        prioridades = ("0200", "0190", "0150")
+    else:
+        prioridades = (reg_alvo,)
+
+    for reg_codigo in prioridades:
+        query = (
+            db.query(EfdRegistro)
+            .filter(
+                EfdRegistro.versao_id == int(versao_origem_id),
+                EfdRegistro.reg == reg_codigo,
+                EfdRegistro.linha > linha_0140,
+            )
+        )
+
+        if linha_limite:
+            query = query.filter(
+                EfdRegistro.linha < linha_limite
+            )
+
+        reg = query.order_by(EfdRegistro.linha.desc()).first()
+
+        if reg:
+            return (
+                getattr(reg, "id", None),
+                int(getattr(reg, "linha", 0) or 0),
+            )
+
+    return (
+        getattr(reg_0140, "id", None),
+        linha_0140,
+    )
+
 def _resolver_ancora_0500_antes_0990(
     db: Session,
     *,
@@ -110,9 +240,10 @@ def garantir_0190_para_item(
     if cache_mestres is not None and cache_mestres.get("ancora_0190"):
         registro_id_alvo, linha_ref = cache_mestres["ancora_0190"]
     else:
-        registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
+        registro_id_alvo, linha_ref = _resolver_ancora_mestre_na_matriz(
             db,
             versao_origem_id=versao_origem_id,
+            reg_alvo="0190",
         )
         if cache_mestres is not None:
             cache_mestres["ancora_0190"] = (registro_id_alvo, linha_ref)
@@ -181,9 +312,10 @@ def garantir_0200_para_item(
     if cache_mestres is not None and cache_mestres.get("ancora_0200"):
         registro_id_alvo, linha_ref = cache_mestres["ancora_0200"]
     else:
-        registro_id_alvo, linha_ref = _resolver_ancora_bloco0_mestres_icms_ipi(
+        registro_id_alvo, linha_ref = _resolver_ancora_mestre_na_matriz(
             db,
             versao_origem_id=versao_origem_id,
+            reg_alvo="0200",
         )
         if cache_mestres is not None:
             cache_mestres["ancora_0200"] = (registro_id_alvo, linha_ref)
@@ -255,8 +387,6 @@ def garantir_0500_conta_padrao(
         db,
         versao_origem_id=versao_origem_id,
     )
-
-
 
 
     linha_nova = f"|0500|01012014|04|A|5|{cod_cta}|{nome_cta}|||"

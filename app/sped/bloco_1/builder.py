@@ -304,7 +304,10 @@ def montar_bloco_1_com_estoque_v2(
 
     linhas_resultado.sort(key=_chave_ordenacao_bloco_1)
 
-    bloco = ["|1001|0|"]
+    tem_movimento = bool(linhas_resultado)
+    ind_mov = "0" if tem_movimento else "1"
+
+    bloco = [f"|1001|{ind_mov}|"]
     bloco.extend(linhas_resultado)
     bloco.append(f"|1990|{len(bloco) + 1}|")
 

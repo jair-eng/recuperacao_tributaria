@@ -238,50 +238,43 @@ def aplicar_revisoes_insert(
         linha_ref = _as_int(rv.get("linha_ref"))
         reg_insert = _reg(rv)
 
-        mestre_bloco0 = _eh_mestre_bloco0(rv)
-
-        priorizar_linha = (
-            reg_insert in {"C100", "C170"}
-            and linha_ref > 0
-            and not mestre_bloco0
-        )
-
         def _buscar_por_linha() -> int:
             for idx, l in enumerate(resultado):
-                if linha_ref and _as_int(getattr(l, "linha", 0)) == linha_ref:
+                if (
+                        linha_ref
+                        and _as_int(getattr(l, "linha", 0)) == linha_ref
+                ):
                     return idx
             return -1
 
         def _buscar_por_rid() -> int:
             for idx, l in enumerate(resultado):
-                if rid and _as_int(getattr(l, "registro_id", 0)) == rid:
+                if (
+                        rid
+                        and _as_int(getattr(l, "registro_id", 0)) == rid
+                ):
                     return idx
             return -1
 
-        if priorizar_linha:
-            idx = _buscar_por_linha()
-            if idx >= 0:
-                return idx
-
-            idx = _buscar_por_rid()
-            if idx >= 0:
-                return idx
-        else:
+        # Registro original é a âncora estrutural estável.
+        if rid > 0:
             idx = _buscar_por_rid()
             if idx >= 0:
                 return idx
 
+        # Linha é apenas fallback para revisões antigas ou sem registro_id.
+        if linha_ref > 0:
             idx = _buscar_por_linha()
             if idx >= 0:
                 return idx
 
         logger.warning(
-            "[OVERLAY INSERT] alvo não encontrado | rev=%s reg=%s rid=%s linha_ref=%s priorizar_linha=%s",
+            "[OVERLAY INSERT] alvo não encontrado | "
+            "rev=%s reg=%s rid=%s linha_ref=%s",
             rv.get("id"),
             reg_insert,
             rid,
             linha_ref,
-            priorizar_linha,
         )
         return -1
 

@@ -7,7 +7,6 @@ from app.domain.workflow.corretiva_v2_service import aplicar_corretiva_apontamen
 from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_nf_icms_na_efd, \
     _resolver_ancora_bloco_c_fim, inserir_notas_icms_ausentes_na_efd_v2
 from app.sped.blocoC.listar_c100_ausentes_no_contribuicoes import _nf_icms_pf_skip, _extrair_ind_oper_cod_sit_do_nf
-from app.sped.bloco_0.bloco_0_0190_0200_agregador import _garantir_mestres_para_notas_elegiveis
 from app.sped.logic.consolidador import popular_pai_id
 from app.utils.numbers import fmt_aliq_sped
 from app.utils.sped import montar_cache_mestres_logicos

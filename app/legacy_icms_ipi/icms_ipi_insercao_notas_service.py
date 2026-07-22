@@ -92,36 +92,40 @@ def _resolver_ancora_bloco_c_fim(
 
     return None, 0, "INSERT_AFTER"
 
-def _buscar_notas_icms_com_itens(
+def _resolver_ancora_bloco_c_fim(
     db: Session,
     *,
-    empresa_id: int,
-    periodo: str | None = None,
-) -> List[tuple[NfIcmsBase, List[NfIcmsItem]]]:
-    q = db.query(NfIcmsBase).filter(NfIcmsBase.empresa_id == int(empresa_id))
-
-    if periodo:
-        q = q.filter(NfIcmsBase.periodo == str(periodo))
-
-    notas = q.order_by(NfIcmsBase.dt_doc.asc(), NfIcmsBase.id.asc()).all()
-
-    saida: List[tuple[NfIcmsBase, List[NfIcmsItem]]] = []
-
-    for nf in notas:
-        itens = (
-            db.query(NfIcmsItem)
-            .filter(
-                NfIcmsItem.empresa_id == int(empresa_id),
-                NfIcmsItem.nf_icms_base_id == int(nf.id),
-            )
-            .order_by(NfIcmsItem.id.asc())
-            .all()
+    versao_origem_id: int,
+) -> tuple[Optional[int], int, str]:
+    reg_c990 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "C990",
         )
-        if itens:
-            saida.append((nf, itens))
+        .order_by(EfdRegistro.linha.asc())
+        .first()
+    )
 
-    return saida
+    if reg_c990:
+        return int(reg_c990.id), int(getattr(reg_c990, "linha", 0) or 0), "INSERT_BEFORE"
 
+    # fallback antigo, se não houver C990
+    regs_c100 = (
+        db.query(EfdRegistro)
+        .filter(
+            EfdRegistro.versao_id == int(versao_origem_id),
+            EfdRegistro.reg == "C100",
+        )
+        .order_by(EfdRegistro.linha.asc())
+        .all()
+    )
+
+    if regs_c100:
+        ultimo = regs_c100[-1]
+        return int(ultimo.id), int(getattr(ultimo, "linha", 0) or 0), "INSERT_AFTER"
+
+    return None, 0, "INSERT_AFTER"
 
 def montar_linha_c100_de_icms(nf: NfIcmsBase) -> str:
     dt_doc_txt = nf.dt_doc.strftime("%d%m%Y") if getattr(nf, "dt_doc", None) else ""
