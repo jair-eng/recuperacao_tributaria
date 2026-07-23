@@ -119,10 +119,64 @@ def gerar_relatorio_executivo_local(
 
     c170_icms = carregar_c170_icms_local(arquivos_icms)
 
+    from collections import Counter
+
+    print(
+        "[DBG ENTRADA CRUZAMENTO]",
+        {
+            "qtd_icms": len(c170_icms),
+            "qtd_contrib": len(c170_contrib),
+            "periodos_icms": dict(
+                Counter(
+                    str(item.get("periodo") or "")
+                    for item in c170_icms
+                )
+            ),
+            "periodos_contrib": dict(
+                Counter(
+                    str(item.get("periodo") or "")
+                    for item in c170_contrib
+                )
+            ),
+        },
+    )
     linhas_cruzadas_c170 = cruzar_c170_icms_contrib_local(
         c170_icms=c170_icms,
         c170_contrib=c170_contrib,
     )
+
+    ########
+
+
+    print(
+        "[DBG CRUZADAS STATUS]",
+        Counter(
+            str(item.get("status_cruzamento") or "")
+            for item in linhas_cruzadas_c170
+        ),
+    )
+
+    print(
+        "[DBG CRUZADAS PERIODO]",
+        Counter(
+            str(item.get("periodo") or "")
+            for item in linhas_cruzadas_c170
+        ),
+    )
+
+    print(
+        "[DBG CRUZADAS CATEGORIA BRUTA]",
+        Counter(
+            (
+                str(item.get("cod_item") or ""),
+                str(item.get("descricao") or ""),
+                str(item.get("ncm") or ""),
+                str(item.get("cfop") or ""),
+            )
+            for item in linhas_cruzadas_c170
+        ).most_common(20),
+    )
+    #####
 
     ctx_recuperacao = montar_contexto_recuperacao_local(
         linhas_ecd=ctx.get("linhas_ecd") or [],

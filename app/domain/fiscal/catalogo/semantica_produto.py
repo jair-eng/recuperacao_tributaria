@@ -41,16 +41,28 @@ def eh_embalagem(meta, catalogo):
 
 
 def eh_combustivel(meta: Dict[str, Any], catalogo: Any) -> bool:
-
-    if "NCM_COMBUSTIVEIS" in _grupos_ncm(meta, catalogo):
-        return True
+    grupos = set(_grupos_ncm(meta, catalogo))
     descricao = _texto_item(meta)
-    if descricao and catalogo.desc_match("TRANSP_DESC_COMBUSTIVEL", descricao):
-        if eh_manutencao_veicular(meta, catalogo):
-            return False
+
+    if grupos.intersection({
+        "NCM_COMBUSTIVEIS",
+        "NCM_DIESEL",
+        "NCM_GASOLINA",
+        "NCM_ETANOL",
+    }):
         return True
 
+    if descricao:
+        for slug in {
+            "DESC_DIESEL",
+            "TRANSP_DESC_COMBUSTIVEL",
+            "DESC_GASOLINA",
+            "DESC_ETANOL",
+        }:
+            if catalogo.desc_match(slug, descricao):
+                return True
     return False
+
 
 def eh_diesel(meta: Dict[str, Any], catalogo: Any) -> bool:
     if "NCM_DIESEL" in _grupos_ncm(meta, catalogo):

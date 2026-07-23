@@ -100,6 +100,31 @@ SLUGS_C170_POR_DOMINIO = {
             "ATIVO_IMOBILIZADO_ADMIN_DESC",
             "ATIVO_IMOBILIZADO_OPERACIONAL_DESC",
         },
+    },
+    "CAFE": {
+        "MateriaPrima": {
+            "NCM_CAFE",
+            "DESC_CAFE",
+
+        },
+
+        "CombustiveisLubrificantes": {
+            "NCM_COMBUSTIVEIS",
+            "NCM_DIESEL",
+            "NCM_LUBRIFICANTES",
+            "NCM_GASOLINA",
+            "DESC_DIESEL",
+            "DESC_GASOLINA",
+            "DESC_ETANOL",
+        },
+
+        "MercadoriasInsumoConsumo": {
+            "NCM_FERTILIZANTES",
+            "DESC_FERTILIZANTES",
+            "NCM_EMBALAGENS",
+            "DESC_EMBALAGENS",
+        },
+
     }
 }
 

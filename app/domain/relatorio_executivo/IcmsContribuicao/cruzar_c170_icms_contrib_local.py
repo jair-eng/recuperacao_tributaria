@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any
+
+from app.domain.relatorio_executivo.IcmsContribuicao.icms_item_map_local import montar_mapa_contrib_item_local, \
+    buscar_contrib_item_em_mapa
 from app.utils.numbers import to_decimal
 from app.utils.sped import chave_match_num_item, chave_match_item
 from app.utils.strings import only_digits, norm_cod_item, s
@@ -71,14 +74,99 @@ def cruzar_c170_icms_contrib_local(
     resultado = []
     stats = defaultdict(int)
 
+    mapa_contrib = montar_mapa_contrib_item_local(
+        c170_contrib
+    )
+
+    ids_contrib_usados: set[int] = set()
+
     for item_icms in c170_icms:
+        texto_item = " ".join(
+            [
+                str(item_icms.get("cod_item") or ""),
+                str(item_icms.get("descr_item") or ""),
+                str(item_icms.get("descr_compl") or ""),
+                str(item_icms.get("ncm") or ""),
+                str(item_icms.get("cod_ncm") or ""),
+            ]
+        ).upper()
+
+        eh_diesel = (
+                "DIESEL" in texto_item
+                or str(item_icms.get("ncm") or "").startswith("271019")
+                or str(item_icms.get("cod_ncm") or "").startswith("271019")
+        )
+
+        if eh_diesel:
+            print(
+                "[DBG DIESEL ENTRADA CRUZAMENTO]",
+                {
+                    "arquivo": item_icms.get("arquivo"),
+                    "periodo": item_icms.get("periodo"),
+                    "ind_oper": item_icms.get("ind_oper"),
+                    "chv_nfe": item_icms.get("chv_nfe"),
+                    "num_item": item_icms.get("num_item"),
+                    "cod_item": item_icms.get("cod_item"),
+                    "descricao": item_icms.get("descr_item"),
+                    "ncm": item_icms.get("ncm"),
+                    "cfop": item_icms.get("cfop"),
+                    "vl_item": item_icms.get("vl_item"),
+                },
+            )
         if item_icms.get("ind_oper") != "0":
             continue
 
-        match, tipo_match = localizar_match_c170_contrib(item_icms, idx)
+        # --------------------------------------------------
+        # Novo motor de match (espelhando o materializador)
+        # --------------------------------------------------
+        match, tipo_match = buscar_contrib_item_em_mapa(
+            mapa_contrib,
+            chave_nfe=item_icms.get("chv_nfe"),
+            num_item=item_icms.get("num_item"),
+            cod_item=item_icms.get("cod_item"),
+            vl_item=item_icms.get("vl_item"),
+            ids_usados=ids_contrib_usados,
+        )
+
+        if eh_diesel:
+            print(
+                "[DBG DIESEL RESULTADO MATCH]",
+                {
+                    "periodo": item_icms.get("periodo"),
+                    "cod_item_icms": item_icms.get("cod_item"),
+                    "vl_item_icms": item_icms.get("vl_item"),
+                    "match": bool(match),
+                    "tipo_match": tipo_match,
+                    "cod_item_contrib": (
+                        match.get("cod_item")
+                        if match
+                        else None
+                    ),
+                    "vl_item_contrib": (
+                        match.get("vl_item")
+                        if match
+                        else None
+                    ),
+                },
+            )
+
+        # Fallback temporário para comparação
+        if match is None:
+            match, tipo_match = localizar_match_c170_contrib(
+                item_icms,
+                idx,
+            )
+
+        if match:
+            ids_contrib_usados.add(match["_match_local_id"])
+
+        if match:
+            ids_contrib_usados.add(match["_match_local_id"])
+
         item_contrib = match or {}
 
         status = "MATCH" if match else "NAO_ESCRITURADO"
+
         stats[status] += 1
         stats[tipo_match or "SEM_MATCH"] += 1
 

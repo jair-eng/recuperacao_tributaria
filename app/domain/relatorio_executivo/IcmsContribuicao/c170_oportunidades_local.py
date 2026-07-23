@@ -7,12 +7,16 @@ from app.domain.fiscal.cenarios.cenario_enriquecimento import enriquecer_cenario
 from app.domain.fiscal.diagnostico.diag_credito_nao_aproveitado import diagnosticar_credito_nao_aproveitado
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.utils.numbers import to_decimal
+from collections import defaultdict
+from typing import Any
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def meta_from_linha_cruzada_c170_local(linha: dict) -> dict:
     icms = linha.get("icms") or {}
-
     return {
         "periodo": linha.get("periodo"),
         "cod_item": linha.get("cod_item"),
@@ -42,10 +46,13 @@ def resolver_categoria_c170_por_catalogo(
     meta: dict,
     catalogo,
     dominio: str,
+    classificacao: dict | None = None,
 ) -> str:
-    regras_dominio = SLUGS_C170_POR_DOMINIO.get(dominio) or {}
+    dominio = str(dominio or "").strip().upper()
+    classificacao = classificacao or {}
 
-    grupos = set(_grupos_ncm(meta, catalogo))
+    operacao = classificacao.get("operacao") or {}
+    produto = classificacao.get("produto") or {}
 
     descricao = (
         meta.get("descr_item")
@@ -59,6 +66,31 @@ def resolver_categoria_c170_por_catalogo(
         descricao=descricao,
     ):
         return "NaoClassificado"
+
+    # ------------------------------------------------------------
+    # Prioriza a classificação semântica já calculada
+    # ------------------------------------------------------------
+    if dominio == "CAFE":
+        if operacao.get("entrada_cafe") or produto.get("cafe"):
+            return "MateriaPrima"
+
+        if produto.get("diesel"):
+            return "CombustiveisLubrificantes"
+
+        if produto.get("combustivel"):
+            return "CombustiveisLubrificantes"
+
+        if produto.get("fertilizante"):
+            return "MercadoriasInsumoConsumo"
+
+        if produto.get("embalagem"):
+            return "MercadoriasInsumoConsumo"
+
+    # ------------------------------------------------------------
+    # Fallback legado por catálogo
+    # ------------------------------------------------------------
+    regras_dominio = SLUGS_C170_POR_DOMINIO.get(dominio) or {}
+    grupos = set(_grupos_ncm(meta, catalogo))
 
     for categoria, slugs in regras_dominio.items():
         for slug in slugs:
@@ -110,7 +142,45 @@ def diagnosticar_oportunidades_c170_local(
     dominio: str = "GERAL",
 ) -> list[dict]:
     catalogo = carregar_catalogo_fiscal(db)
-    oportunidades_c170 = []
+    oportunidades_c170: list[dict] = []
+
+    dominio = str(dominio or "GERAL").strip().upper()
+
+    stats = {
+        "sem_classificacao": 0,
+        "nao_classificado": 0,
+        "sem_cenario": 0,
+        "cenario_inativo": 0,
+        "sem_codigo_cenario": 0,
+        "sem_enquadramento": 0,
+        "sem_diagnostico": 0,
+        "ja_creditado": 0,
+        "base_zerada": 0,
+        "incluidos": 0,
+    }
+
+    # Mantém somente pequenas amostras para facilitar novos domínios,
+    # sem inundar o terminal com um log para cada item.
+    LIMITE_AMOSTRAS = 5
+
+    amostras: dict[str, list[dict]] = {
+        "sem_classificacao": [],
+        "nao_classificado": [],
+        "sem_cenario": [],
+        "cenario_inativo": [],
+        "sem_codigo_cenario": [],
+        "sem_enquadramento": [],
+        "sem_diagnostico": [],
+        "base_zerada": [],
+    }
+
+    contagem_periodos = defaultdict(int)
+    contagem_status_cruzamento = defaultdict(int)
+    contagem_categorias = defaultdict(int)
+    contagem_cenarios = defaultdict(int)
+    contagem_sem_cenario_por_categoria_cfop = defaultdict(int)
+    contagem_oportunidades_por_tipo = defaultdict(int)
+    contagem_oportunidades_por_categoria = defaultdict(int)
 
     csts_creditaveis = {
         str(cst or "").strip().zfill(2)
@@ -118,28 +188,89 @@ def diagnosticar_oportunidades_c170_local(
         for cst in catalogo.codigos(slug)
     }
 
-    cache_classificacao = {}
-    cache_categoria = {}
-    cache_enquadramento_por_codigo = {}
+    cache_classificacao: dict[tuple, dict | None] = {}
+    cache_categoria: dict[tuple, str] = {}
+    cache_enquadramento_por_codigo: dict[str, dict] = {}
+
+    def adicionar_amostra(
+        grupo: str,
+        *,
+        meta: dict,
+        linha: dict,
+        categoria: str | None = None,
+        codigo_cenario: str | None = None,
+        classificacao: dict | None = None,
+        detalhe: Any = None,
+    ) -> None:
+        destino = amostras.get(grupo)
+
+        if destino is None or len(destino) >= LIMITE_AMOSTRAS:
+            return
+
+        destino.append({
+            "periodo": meta.get("periodo"),
+            "cod_item": meta.get("cod_item"),
+            "descricao": meta.get("descr_item"),
+            "ncm": meta.get("ncm"),
+            "cfop": meta.get("cfop"),
+            "categoria": categoria,
+            "cenario": codigo_cenario,
+            "status_cruzamento": meta.get("status_cruzamento"),
+            "tipo_match": linha.get("tipo_match"),
+            "chv_nfe": linha.get("chv_nfe"),
+            "num_doc": linha.get("num_doc"),
+            "num_item": linha.get("num_item"),
+            "operacao": (
+                (classificacao or {}).get("operacao")
+                if classificacao
+                else None
+            ),
+            "produto": (
+                (classificacao or {}).get("produto")
+                if classificacao
+                else None
+            ),
+            "detalhe": detalhe,
+        })
 
     for linha in linhas_cruzadas:
-
         meta = meta_from_linha_cruzada_c170_local(linha)
         meta["dominio"] = dominio
 
-        descricao = (
+        status_cruzamento = str(
+            linha.get("status_cruzamento")
+            or meta.get("status_cruzamento")
+            or ""
+        ).strip().upper()
+
+        meta["status_cruzamento"] = status_cruzamento
+
+        descricao = str(
             meta.get("descr_item")
             or meta.get("descricao_item")
             or meta.get("descricao")
             or ""
-        )
+        ).strip()
+
+        # Mantém uma descrição canônica dentro do meta.
+        meta["descr_item"] = descricao
+
+        periodo = str(meta.get("periodo") or "").strip()
+        cfop = str(meta.get("cfop") or "").strip()
+        cod_item = str(meta.get("cod_item") or "").strip()
+        ncm = str(meta.get("ncm") or "").strip()
+
+        contagem_periodos[periodo or "SEM_PERIODO"] += 1
+        contagem_status_cruzamento[
+            status_cruzamento or "SEM_STATUS"
+        ] += 1
 
         chave_classificacao = (
             dominio,
-            str(meta.get("cod_item") or "").strip(),
-            str(meta.get("ncm") or "").strip(),
-            descricao.upper().strip(),
-            str(meta.get("cfop") or "").strip(),
+            cod_item,
+            ncm,
+            descricao.upper(),
+            cfop,
         )
 
         if chave_classificacao in cache_classificacao:
@@ -152,12 +283,21 @@ def diagnosticar_oportunidades_c170_local(
             cache_classificacao[chave_classificacao] = classificacao
 
         if not classificacao:
+            stats["sem_classificacao"] += 1
+
+            adicionar_amostra(
+                "sem_classificacao",
+                meta=meta,
+                linha=linha,
+            )
             continue
 
         chave_categoria = (
             dominio,
-            str(meta.get("ncm") or "").strip(),
-            descricao.upper().strip(),
+            cod_item,
+            ncm,
+            descricao.upper(),
+            cfop,
         )
 
         if chave_categoria in cache_categoria:
@@ -167,11 +307,25 @@ def diagnosticar_oportunidades_c170_local(
                 meta=meta,
                 catalogo=catalogo,
                 dominio=dominio,
+                classificacao=classificacao,
             )
             cache_categoria[chave_categoria] = categoria
 
         if categoria == "NaoClassificado":
+            stats["nao_classificado"] += 1
+
+            adicionar_amostra(
+                "nao_classificado",
+                meta=meta,
+                linha=linha,
+                classificacao=classificacao,
+            )
             continue
+
+        contagem_categorias[categoria] += 1
+
+        meta["categoria"] = categoria
+        meta["categoria_catalogo"] = categoria
 
         cenario = avaliar_cenarios(
             meta,
@@ -179,50 +333,186 @@ def diagnosticar_oportunidades_c170_local(
         )
 
         if not cenario:
+            stats["sem_cenario"] += 1
+            contagem_sem_cenario_por_categoria_cfop[
+                (categoria, cfop or "SEM_CFOP")
+            ] += 1
+
+            adicionar_amostra(
+                "sem_cenario",
+                meta=meta,
+                linha=linha,
+                categoria=categoria,
+                classificacao=classificacao,
+            )
             continue
 
         if not cenario.get("ativo"):
+            stats["cenario_inativo"] += 1
+
+            adicionar_amostra(
+                "cenario_inativo",
+                meta=meta,
+                linha=linha,
+                categoria=categoria,
+                classificacao=classificacao,
+                detalhe={
+                    "cenario": cenario,
+                },
+            )
             continue
 
-        fundamentos = cenario.get("fundamento_legal") or []
-        codigo_cenario = str(fundamentos[0]).strip() if fundamentos else ""
+        codigo_cenario = str(
+            cenario.get("codigo_cenario")
+            or cenario.get("cenario")
+            or ""
+        ).strip()
 
         if not codigo_cenario:
+            fundamentos_raw = cenario.get("fundamento_legal") or []
+
+            if isinstance(fundamentos_raw, str):
+                codigo_cenario = fundamentos_raw.strip()
+
+            elif isinstance(fundamentos_raw, (list, tuple, set)):
+                codigo_cenario = next(
+                    (
+                        str(fundamento).strip()
+                        for fundamento in fundamentos_raw
+                        if str(fundamento or "").strip()
+                    ),
+                    "",
+                )
+
+        if not codigo_cenario:
+            stats["sem_codigo_cenario"] += 1
+
+            adicionar_amostra(
+                "sem_codigo_cenario",
+                meta=meta,
+                linha=linha,
+                categoria=categoria,
+                classificacao=classificacao,
+                detalhe={
+                    "cenario": cenario,
+                },
+            )
             continue
+
+        contagem_cenarios[codigo_cenario] += 1
 
         if codigo_cenario in cache_enquadramento_por_codigo:
             cenario = {
                 **cenario,
                 "codigo_cenario": codigo_cenario,
-                "enquadramento": cache_enquadramento_por_codigo[codigo_cenario],
+                "enquadramento": (
+                    cache_enquadramento_por_codigo[codigo_cenario]
+                ),
             }
         else:
-            cenario = enriquecer_cenario_com_enquadramento(db, cenario)
+            cenario = {
+                **cenario,
+                "codigo_cenario": codigo_cenario,
+            }
 
-            if not cenario.get("enquadramento"):
+            cenario = enriquecer_cenario_com_enquadramento(
+                db,
+                cenario,
+            )
+
+            enquadramento_carregado = (
+                cenario.get("enquadramento") or {}
+            )
+
+            if not enquadramento_carregado:
+                stats["sem_enquadramento"] += 1
+
+                adicionar_amostra(
+                    "sem_enquadramento",
+                    meta=meta,
+                    linha=linha,
+                    categoria=categoria,
+                    codigo_cenario=codigo_cenario,
+                    classificacao=classificacao,
+                )
                 continue
 
-            cache_enquadramento_por_codigo[codigo_cenario] = cenario.get("enquadramento")
+            cache_enquadramento_por_codigo[codigo_cenario] = (
+                enquadramento_carregado
+            )
 
-        diag = diagnosticar_credito_nao_aproveitado(
-            meta=meta,
-            classificacao=classificacao,
-            cenario=cenario,
-        )
+        enquadramento = cenario.get("enquadramento") or {}
+
+        if not enquadramento:
+            stats["sem_enquadramento"] += 1
+
+            adicionar_amostra(
+                "sem_enquadramento",
+                meta=meta,
+                linha=linha,
+                categoria=categoria,
+                codigo_cenario=codigo_cenario,
+                classificacao=classificacao,
+            )
+            continue
+
+        if status_cruzamento == "NAO_ESCRITURADO":
+            diag = {
+                "codigo": "SEM_EFD",
+                "tipo": "OPORTUNIDADE",
+                "problemas": ["NAO_ESCRITURADO"],
+                "meta": {
+                    **meta,
+                    "enquadramento": enquadramento,
+                    "cst_pis_atual": "",
+                    "cst_cofins_atual": "",
+                    "cst_pis_destino": enquadramento.get(
+                        "cst_pis_destino"
+                    ),
+                    "cst_cofins_destino": enquadramento.get(
+                        "cst_cofins_destino"
+                    ),
+                },
+            }
+        else:
+            diag = diagnosticar_credito_nao_aproveitado(
+                meta=meta,
+                classificacao=classificacao,
+                cenario=cenario,
+            )
+
         if not diag:
+            stats["sem_diagnostico"] += 1
+
+            adicionar_amostra(
+                "sem_diagnostico",
+                meta=meta,
+                linha=linha,
+                categoria=categoria,
+                codigo_cenario=codigo_cenario,
+                classificacao=classificacao,
+                detalhe={
+                    "enquadramento": enquadramento,
+                },
+            )
             continue
 
         meta_diag = diag.get("meta") or {}
-        enquadramento = meta_diag.get("enquadramento") or {}
 
-        cst_pis_atual = str(meta_diag.get("cst_pis_atual") or "").strip().zfill(2)
-        cst_cofins_atual = str(meta_diag.get("cst_cofins_atual") or "").strip().zfill(2)
+        cst_pis_atual = str(
+            meta_diag.get("cst_pis_atual") or ""
+        ).strip().zfill(2)
+
+        cst_cofins_atual = str(
+            meta_diag.get("cst_cofins_atual") or ""
+        ).strip().zfill(2)
 
         if (
-            linha.get("status_cruzamento") != "NAO_ESCRITURADO"
+            status_cruzamento != "NAO_ESCRITURADO"
             and cst_pis_atual in csts_creditaveis
             and cst_cofins_atual in csts_creditaveis
         ):
+            stats["ja_creditado"] += 1
             continue
 
         base_recuperavel = calcular_base_recuperavel_c170_local(
@@ -230,47 +520,96 @@ def diagnosticar_oportunidades_c170_local(
             linha=linha,
         )
 
-        aliq_pis = to_decimal(enquadramento.get("aliq_pis"))
-        aliq_cofins = to_decimal(enquadramento.get("aliq_cofins"))
+        if base_recuperavel <= 0:
+            stats["base_zerada"] += 1
+
+            adicionar_amostra(
+                "base_zerada",
+                meta=meta,
+                linha=linha,
+                categoria=categoria,
+                codigo_cenario=codigo_cenario,
+                classificacao=classificacao,
+                detalhe={
+                    "vl_item": meta.get("vl_item"),
+                    "vl_desc": meta.get("vl_desc"),
+                    "vl_icms": meta.get("vl_icms"),
+                    "vl_bc_pis": meta.get("vl_bc_pis"),
+                    "vl_bc_cofins": meta.get("vl_bc_cofins"),
+                    "icms_vl_bc_pis": (
+                        (linha.get("icms") or {}).get("vl_bc_pis")
+                    ),
+                    "icms_vl_bc_cofins": (
+                        (linha.get("icms") or {}).get(
+                            "vl_bc_cofins"
+                        )
+                    ),
+                },
+            )
+
+        aliq_pis = to_decimal(
+            enquadramento.get("aliq_pis")
+        )
+        aliq_cofins = to_decimal(
+            enquadramento.get("aliq_cofins")
+        )
 
         pis_recuperavel = (
-            base_recuperavel * aliq_pis / Decimal("100")
+            base_recuperavel
+            * aliq_pis
+            / Decimal("100")
         ).quantize(Decimal("0.01"))
 
         cofins_recuperavel = (
-            base_recuperavel * aliq_cofins / Decimal("100")
+            base_recuperavel
+            * aliq_cofins
+            / Decimal("100")
         ).quantize(Decimal("0.01"))
 
         problemas = diag.get("problemas") or []
 
         codigo_diagnostico = (
             "SEM_EFD"
-            if linha.get("status_cruzamento") == "NAO_ESCRITURADO"
+            if status_cruzamento == "NAO_ESCRITURADO"
             else diag.get("codigo")
         )
 
-        if linha.get("status_cruzamento") == "NAO_ESCRITURADO":
+        if status_cruzamento == "NAO_ESCRITURADO":
             status_oportunidade = "NAO_ESCRITURADO"
-        elif any("CST" in p for p in problemas):
+
+        elif any(
+            "CST" in str(problema).upper()
+            for problema in problemas
+        ):
             status_oportunidade = "CST_DIVERGENTE"
-        elif any("BASE" in p for p in problemas):
+
+        elif any(
+            "BASE" in str(problema).upper()
+            for problema in problemas
+        ):
             status_oportunidade = "BASE_ZERADA"
-        elif any("CREDITO" in p for p in problemas):
+
+        elif any(
+            "CREDITO" in str(problema).upper()
+            for problema in problemas
+        ):
             status_oportunidade = "CREDITO_NAO_APROVEITADO"
+
         else:
             status_oportunidade = "OUTRA_INCONSISTENCIA"
 
-        oportunidades_c170.append({
+        oportunidade = {
             "periodo": meta.get("periodo"),
             "status_oportunidade": status_oportunidade,
             "codigo_diagnostico": codigo_diagnostico,
             "tipo": diag.get("tipo"),
 
             "categoria": categoria,
+            "cenario": codigo_cenario,
             "nat_bc_cred": enquadramento.get("nat_bc_cred"),
             "cod_cred": enquadramento.get("cod_cred"),
 
-            "descricao": meta.get("descr_item"),
+            "descricao": descricao,
             "cod_item": meta.get("cod_item"),
             "ncm": meta.get("ncm"),
             "cfop": meta.get("cfop"),
@@ -278,30 +617,119 @@ def diagnosticar_oportunidades_c170_local(
 
             "cst_pis_atual": cst_pis_atual,
             "cst_cofins_atual": cst_cofins_atual,
-            "cst_pis_destino": meta_diag.get("cst_pis_destino"),
-            "cst_cofins_destino": meta_diag.get("cst_cofins_destino"),
+            "cst_pis_destino": (
+                meta_diag.get("cst_pis_destino")
+                or enquadramento.get("cst_pis_destino")
+            ),
+            "cst_cofins_destino": (
+                meta_diag.get("cst_cofins_destino")
+                or enquadramento.get("cst_cofins_destino")
+            ),
 
             "base_recuperavel": base_recuperavel,
             "pis_recuperavel": pis_recuperavel,
             "cofins_recuperavel": cofins_recuperavel,
-            "credito_recuperavel": pis_recuperavel + cofins_recuperavel,
+            "credito_recuperavel": (
+                pis_recuperavel + cofins_recuperavel
+            ),
 
             "problemas": problemas,
-            "motivo": ", ".join(problemas),
+            "motivo": ", ".join(
+                str(problema)
+                for problema in problemas
+            ),
 
-            "status_cruzamento": linha.get("status_cruzamento"),
+            "status_cruzamento": status_cruzamento,
             "tipo_match": linha.get("tipo_match"),
             "chv_nfe": linha.get("chv_nfe"),
             "num_doc": linha.get("num_doc"),
             "num_item": linha.get("num_item"),
-        })
+        }
 
-    print("[PERF C170 OPORTUNIDADES]", {
+        oportunidades_c170.append(oportunidade)
+
+        stats["incluidos"] += 1
+        contagem_oportunidades_por_tipo[
+            status_oportunidade
+        ] += 1
+        contagem_oportunidades_por_categoria[
+            categoria
+        ] += 1
+
+    resumo = {
+        "dominio": dominio,
         "linhas_cruzadas": len(linhas_cruzadas),
         "cache_classificacao": len(cache_classificacao),
         "cache_categoria": len(cache_categoria),
-        "cache_enquadramento": len(cache_enquadramento_por_codigo),
+        "cache_enquadramento": len(
+            cache_enquadramento_por_codigo
+        ),
         "oportunidades": len(oportunidades_c170),
-    })
+        **stats,
+    }
+
+    logger.info(
+        "[REL_C170_RESUMO] %s",
+        resumo,
+    )
+
+    logger.info(
+        "[REL_C170_DISTRIBUICAO] "
+        "periodos=%s status_cruzamento=%s "
+        "categorias=%s cenarios=%s "
+        "oportunidades_tipo=%s "
+        "oportunidades_categoria=%s",
+        dict(sorted(contagem_periodos.items())),
+        dict(contagem_status_cruzamento),
+        dict(
+            sorted(
+                contagem_categorias.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+        ),
+        dict(
+            sorted(
+                contagem_cenarios.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+        ),
+        dict(contagem_oportunidades_por_tipo),
+        dict(contagem_oportunidades_por_categoria),
+    )
+
+    if contagem_sem_cenario_por_categoria_cfop:
+        logger.info(
+            "[REL_C170_SEM_CENARIO_RESUMO] top=%s",
+            sorted(
+                contagem_sem_cenario_por_categoria_cfop.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )[:20],
+        )
+
+    # Apenas situações excepcionais geram warning.
+    for grupo in (
+        "sem_classificacao",
+        "nao_classificado",
+        "sem_cenario",
+        "cenario_inativo",
+        "sem_codigo_cenario",
+        "sem_enquadramento",
+        "sem_diagnostico",
+        "base_zerada",
+    ):
+        quantidade = stats.get(grupo, 0)
+
+        if quantidade <= 0:
+            continue
+
+        logger.warning(
+            "[REL_C170_AMOSTRAS] tipo=%s quantidade=%s amostras=%s",
+            grupo,
+            quantidade,
+            amostras.get(grupo) or [],
+        )
 
     return oportunidades_c170
