@@ -8,34 +8,13 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from app.Legacy.fiscal.cat_fiscal import CatalogoFiscal
 from app.Legacy.fiscal.constants import DOM_AGRO, DOM_GERAL, DOM_CAFE, DOM_TRANSP, DOM_REVENDA_GAS, DOM_POSTO
-from app.Legacy.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, grupos_posto_credito_normal, TRANSP_NCM_SLUGS, \
-    TRANSP_DESC_SLUGS
-
+from app.Legacy.fiscal.settings_fiscais import CFOPS_ELEGIVEIS, grupos_posto_credito_normal
 
 # ============================================================
 # Helpers
 # ============================================================
 
-def _match_dominio_transp_catalogo(
-    *,
-    ncm: str,
-    desc: str,
-    catalogo: CatalogoFiscal,
-) -> bool:
-    ncm = str(ncm or "").strip()
-    desc = _norm_str(desc).upper()
 
-    for slug in TRANSP_NCM_SLUGS:
-        if catalogo.ncm_match(slug, ncm):
-            return True
-
-    for slug in TRANSP_DESC_SLUGS:
-        for termo in catalogo.codigos(slug):
-            termo_norm = _norm_str(str(termo or "")).upper()
-            if termo_norm and termo_norm in desc:
-                return True
-
-    return False
 
 def fmt_sped_num(v, casas=2) -> str:
     dec = Decimal(str(v or 0))

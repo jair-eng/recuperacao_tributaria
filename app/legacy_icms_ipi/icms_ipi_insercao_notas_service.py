@@ -14,10 +14,6 @@ from app.icms_ipi.icms_helpers import (
     _only_digits,
     fmt_sped_num,
 )
-from app.icms_ipi.icms_utils_fiscal import _filtrar_notas_elegiveis_por_dominio, _cfop_item_icms, \
-    _cfop_elegivel_por_dominio
-from types import SimpleNamespace
-
 from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
 from app.services.dominio_service import resolver_dominio_por_versao
 from app.sped.bloco_0.bloco_0_0190_0200_agregador import _garantir_mestres_para_notas_elegiveis
