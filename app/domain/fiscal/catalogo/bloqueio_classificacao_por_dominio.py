@@ -55,8 +55,39 @@ BLOQUEIOS_CLASSIFICACAO = {
             "TINTA SPRAY",
             "BOM AR",
             "LAVANDA",
+            "PNEUMATICO",
+            "PNEUMATICA",
+            "PNEUMÁTICO",
+            "PNEUMÁTICA",
+            "MARTELETE PNEUMATICO",
+            "FURADEIRA PNEUMATICA",
+            "CHAVE PNEUMATICA",
+            "PISTOLA PNEUMATICA",
+            "COMPRESSOR PNEUMATICO",
+            "SERRA COPO",
+            "SOQUETE IMPACTO",
+            "SOQUETE ENC 1",
+            "SOQUETE ENC 12",
+            "CHAVE COMBINADA",
+            "CHAVE BIELA",
+            "CHAVE ESTRELA",
+            "JOGO CHAVE ALLEN",
+            "MULTIMETRO",
+            "TRENA",
+            "SOLDA ARAME MIG",
+            "MULTIMIDIA",
+            "CENTRAL MULTIMIDIA",
+            "MOLDURA PARA MULTIMIDIA",
+            "CABO PARA RADIO",
+            "APOIO PARA BRACO",
+            "CAPA DE CHUVA",
+            "CAPA CHUVA",
+            "RODIZIO GIRATORIO",
+            "RODIZIO FIXO",
+            "PARAFUSO SEXTAVADO",
+                }
                     },
-    },
+
 
     "CAFE": {
         "descricao_contem": {
@@ -66,8 +97,8 @@ BLOQUEIOS_CLASSIFICACAO = {
 
     "GERAL": {
         "descricao_contem": set(),
-    },
-}
+            },
+        }
 
 def item_bloqueado_classificacao(
     *,
