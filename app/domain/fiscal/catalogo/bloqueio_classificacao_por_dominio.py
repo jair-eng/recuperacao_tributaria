@@ -91,7 +91,7 @@ BLOQUEIOS_CLASSIFICACAO = {
 
     "CAFE": {
         "descricao_contem": {
-            # futuro
+            "ESTOPA BRANCA",
         },
     },
 

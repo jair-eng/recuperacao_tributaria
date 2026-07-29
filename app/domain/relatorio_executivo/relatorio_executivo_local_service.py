@@ -46,8 +46,15 @@ def gerar_relatorio_executivo_local(
     if not arquivos_icms:
         raise FileNotFoundError(f"Nenhum arquivo .txt encontrado em: {pasta_icms}")
 
+        # ECD é opcional.
     if not arquivos_ecd:
-        raise FileNotFoundError(f"Nenhum arquivo .txt encontrado em: {pasta_ecd}")
+        print(
+            "[RELATÓRIO LOCAL][SEM_ECD]",
+            "Nenhum arquivo ECD encontrado.",
+            "O relatório seguirá somente com EFD Contribuições e ICMS/IPI.",
+            "pasta=", pasta_ecd,
+            flush=True,
+        )
 
     if not arquivos_contrib:
         raise FileNotFoundError(f"Nenhum arquivo .txt encontrado em: {pasta_contrib}")
@@ -90,6 +97,9 @@ def gerar_relatorio_executivo_local(
         pasta_contrib=pasta_contrib,
         periodo=None,
     )
+    ctx["possui_ecd"] = bool(arquivos_ecd)
+    ctx["sem_ecd"] = not bool(arquivos_ecd)
+    ctx["arquivos_ecd"] = len(arquivos_ecd)
     ctx["mapa_nat_bc_cred"] = carregar_mapa_nat_bc_cred(db)
 
     registros_0150_contrib = carregar_0150_local(arquivos_contrib)
@@ -102,8 +112,6 @@ def gerar_relatorio_executivo_local(
         f100,
         mapa_participantes_contrib,
     )
-
-    ctx["mapa_nat_bc_cred"] = carregar_mapa_nat_bc_cred(db)
 
     ctx["f100"] = montar_contexto_f100(
         f100,
@@ -201,6 +209,12 @@ def gerar_relatorio_executivo_local(
         titulo="Relatório Executivo ECD x EFD - Local",
     )
 
-    print("[REL LOCAL] relatório gerado:", caminho_saida)
+    print(
+        "[REL LOCAL] relatório gerado:",
+        caminho_saida,
+        "| possui_ecd=",
+        bool(arquivos_ecd),
+        flush=True,
+    )
 
     return caminho_saida
