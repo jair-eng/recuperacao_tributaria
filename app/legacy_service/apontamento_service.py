@@ -3,9 +3,12 @@ from sqlalchemy.orm import Session
 from app.db.models import EfdApontamento, EfdVersao, NfIcmsBase, NfIcmsItem, ItemFiscalConsolidado
 from typing import List
 import logging
+
+from app.domain.fiscal.frete_transp.insercao_frete import inserir_f100s_do_f010_encadeados
 from app.domain.workflow.corretiva_v2_service import aplicar_corretiva_apontamento_v2
 from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_nf_icms_na_efd, \
     _resolver_ancora_bloco_c_fim, inserir_notas_icms_ausentes_na_efd_v2
+
 from app.sped.blocoC.listar_c100_ausentes_no_contribuicoes import _nf_icms_pf_skip, _extrair_ind_oper_cod_sit_do_nf
 from app.sped.logic.consolidador import popular_pai_id
 from app.utils.numbers import fmt_aliq_sped
@@ -54,6 +57,251 @@ class ApontamentoService:
         total_v2_skips = 0
 
         ids_processados_lote: set[int] = set()
+
+        # ============================================================
+        # FRETE - F100 AUSENTE
+        # ============================================================
+        if "F100_FRETE_AUSENTE_V2" in codigos_pendentes:
+
+            logger.info(
+                "[RESOLVER_TODOS] AUTO-FIX F100_FRETE_AUSENTE_V2: INICIO | "
+                "versao_id=%s",
+                versao_id,
+            )
+
+            aps_frete = (
+                db.query(EfdApontamento)
+                .filter(EfdApontamento.versao_id == versao_id)
+                .filter(EfdApontamento.codigo == "F100_FRETE_AUSENTE_V2")
+                .filter(EfdApontamento.resolvido.is_(False))
+                .all()
+            )
+
+            # --------------------------------------------------------
+            # Agrupa os apontamentos pelo mesmo F010
+            # --------------------------------------------------------
+            grupos_f010: dict[int, list[EfdApontamento]] = {}
+
+            for ap in aps_frete:
+
+                meta = ap.meta_json or {}
+
+                tipo_corretiva_v2 = str(
+                    meta.get("tipo_corretiva_v2") or ""
+                ).upper()
+
+                if tipo_corretiva_v2 != "INSERIR_F100_FRETE":
+                    total_v2_skips += 1
+
+                    logger.warning(
+                        "[RESOLVER_TODOS][FRETE] SKIP | "
+                        "apontamento_id=%s | tipo=%s",
+                        ap.id,
+                        tipo_corretiva_v2,
+                    )
+
+                    continue
+
+                estabelecimento_f010 = (
+                        meta.get("estabelecimento_f010") or {}
+                )
+
+                registro_id_f010 = estabelecimento_f010.get(
+                    "registro_id_f010"
+                )
+
+                if not registro_id_f010:
+                    total_v2_erros += 1
+
+                    logger.warning(
+                        "[RESOLVER_TODOS][FRETE] ERRO | "
+                        "apontamento_id=%s | F010 sem registro_id",
+                        ap.id,
+                    )
+
+                    continue
+
+                grupos_f010.setdefault(
+                    int(registro_id_f010),
+                    [],
+                ).append(ap)
+
+            # --------------------------------------------------------
+            # Processa cada F010 com seus F100 encadeados
+            # --------------------------------------------------------
+            for registro_id_f010, apontamentos_f010 in grupos_f010.items():
+
+                primeiro_ap = apontamentos_f010[0]
+                meta_base = primeiro_ap.meta_json or {}
+
+                estabelecimento_f010 = (
+                        meta_base.get("estabelecimento_f010") or {}
+                )
+
+                linha_f010 = estabelecimento_f010.get("linha_inicio")
+
+                if linha_f010 is None:
+                    total_v2_erros += len(apontamentos_f010)
+
+                    logger.warning(
+                        "[RESOLVER_TODOS][FRETE] F010 sem linha_inicio | "
+                        "registro_id_f010=%s",
+                        registro_id_f010,
+                    )
+
+                    continue
+
+                fretes = []
+
+                # ----------------------------------------------------
+                # Monta todos os F100 pertencentes ao mesmo F010
+                # ----------------------------------------------------
+                for ap in apontamentos_f010:
+                    meta = ap.meta_json or {}
+
+                    participante = meta.get("participante") or {}
+                    contrato = meta.get("contrato") or {}
+                    frete_meta = contrato.get("frete") or {}
+                    enq = meta.get("enquadramento") or {}
+
+                    numero_f100 = (
+                            meta.get("numero_f100")
+                            or contrato.get("numero_f100")
+                    )
+
+                    fretes.append({
+                        "numero_f100": str(
+                            numero_f100 or ""
+                        ).strip(),
+
+                        "cod_part": str(
+                            participante.get("cod_part") or ""
+                        ).strip(),
+
+                        "data": frete_meta.get("data"),
+                        "valor_frete": frete_meta.get("valor_frete"),
+
+                        "cst_pis": (
+                                meta.get("cst_pis_destino")
+                                or enq.get("cst_pis_destino")
+                        ),
+
+                        "cst_cofins": (
+                                meta.get("cst_cofins_destino")
+                                or enq.get("cst_cofins_destino")
+                        ),
+
+                        "aliq_pis": (
+                                enq.get("aliq_pis")
+                                or meta.get("aliq_pis")
+                        ),
+
+                        "aliq_cofins": (
+                                enq.get("aliq_cofins")
+                                or meta.get("aliq_cofins")
+                        ),
+
+                        "nat_bc_cred": (
+                                enq.get("nat_bc_cred")
+                                or enq.get("base_credito_codigo")
+                                or meta.get("nat_bc_cred")
+                        ),
+                        "cod_cred": (
+                                meta.get("cod_cred")
+                                or meta.get("tipo_credito_codigo")
+                                or meta.get("tipo_credito")
+                                or enq.get("cod_cred")
+                                or enq.get("tipo_credito_codigo")
+                                or enq.get("tipo_credito")
+                        ),
+
+                        "cod_cta": meta.get("cod_cta"),
+                        "periodo": meta.get("periodo"),
+
+                        # Dado auxiliar.
+                        # Depois podemos usar para vincular cada revisão
+                        # ao apontamento correspondente.
+                        "_apontamento_id": int(ap.id),
+                    })
+                # ----------------------------------------------------
+                # Ordena os F100 antes de inserir
+                # ----------------------------------------------------
+                fretes = sorted(
+                    fretes,
+                    key=lambda x: int(
+                        x.get("numero_f100") or 0
+                    ),
+                )
+
+                # ----------------------------------------------------
+                # Insere os F100 do grupo de forma encadeada
+                #
+                # Exemplo:
+                #
+                # F010
+                #   ↓
+                # F100 3835
+                #   ↓
+                # F100 3836
+                # ----------------------------------------------------
+                resultado_insercao = inserir_f100s_do_f010_encadeados(
+                    db,
+                    versao_origem_id=versao_id,
+                    fretes=fretes,
+                    registro_id_f010=int(registro_id_f010),
+                    linha_f010=int(linha_f010),
+                    apontamento_id=None,
+                    motivo_codigo="CORRETIVA_F100_FRETE",
+                )
+
+                db.flush()
+
+                total_inseridos = int(
+                    resultado_insercao.get("total_inseridos") or 0
+                )
+
+                # ----------------------------------------------------
+                # Confere se todos os F100 esperados foram inseridos
+                # ----------------------------------------------------
+                if total_inseridos != len(fretes):
+                    total_v2_erros += len(fretes)
+
+                    logger.warning(
+                        "[RESOLVER_TODOS][FRETE] quantidade divergente | "
+                        "registro_id_f010=%s | esperados=%s | inseridos=%s",
+                        registro_id_f010,
+                        len(fretes),
+                        total_inseridos,
+                    )
+
+                    continue
+
+                # ----------------------------------------------------
+                # Só marca os apontamentos como resolvidos depois que
+                # todos os F100 do grupo foram inseridos com sucesso
+                # ----------------------------------------------------
+                for ap in apontamentos_f010:
+                    ap.resolvido = True
+                    db.add(ap)
+
+                total_v2_corretivas += total_inseridos
+
+                logger.info(
+                    "[RESOLVER_TODOS][FRETE] F010 OK | "
+                    "registro_id_f010=%s | qtd_f100=%s | linha_fim=%s",
+                    registro_id_f010,
+                    total_inseridos,
+                    resultado_insercao.get("linha_fim_bloco"),
+                )
+
+            db.flush()
+
+            logger.info(
+                "[RESOLVER_TODOS] AUTO-FIX F100_FRETE_AUSENTE_V2: FIM | "
+                "versao_id=%s | grupos_f010=%s",
+                versao_id,
+                len(grupos_f010),
+            )
 
         if "CREDITO_NAO_APROVEITADO_V2" in codigos_pendentes:
             logger.info(
@@ -620,3 +868,53 @@ def _resolver_v2_c100_c170_por_nf(
         "erros": erros,
         "nfs_processadas": nfs_processadas,
     }
+
+
+###########  TESTE
+#
+# from app.db.session import SessionLocal
+# from app.legacy_service.versao_overlay_service import carregar_linhas_logicas_com_revisoes_e_insert
+#
+# db = SessionLocal()
+#
+# try:
+#     resultado = ApontamentoService.resolver_todos_pendentes_por_versao(
+#         db=db,
+#         versao_id=124,
+#     )
+#
+#     print("\nRESULTADO RESOLVER TODOS:")
+#     print(resultado)
+#
+#
+#     linhas = carregar_linhas_logicas_com_revisoes_e_insert(
+#         db,
+#         versao_origem_id=124,
+#         versao_final_id=None,
+#     )
+#
+#     print("\n" + "=" * 80)
+#     print("OVERLAY - F010 + F100")
+#     print("=" * 80)
+#
+#     for linha in linhas:
+#
+#         numero_linha = int(
+#             getattr(linha, "linha", 0) or 0
+#         )
+#
+#         # Mostra uma pequena janela em torno do nosso F010
+#         if 3538 <= numero_linha <= 3546:
+#             print(
+#                 numero_linha,
+#                 getattr(linha, "reg", None),
+#                 getattr(linha, "revisao_id", None),
+#                 getattr(linha, "dados", None),
+#             )
+#
+#     print("=" * 80)
+#
+#     db.rollback()
+#
+# finally:
+#     db.close()

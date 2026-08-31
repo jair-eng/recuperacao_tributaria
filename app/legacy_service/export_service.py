@@ -114,7 +114,7 @@ def exportar_sped(
     line_ending = getattr(arquivo, "line_ending", "CRLF")
     newline = "\r\n" if str(line_ending).upper() == "CRLF" else "\n"
 
-    CST_CREDITO = {"50", "51", "52", "53", "54", "55", "56","61"}
+    CST_CREDITO = {"50", "51", "52", "53", "54", "55", "56","60", "61"}
 
     try:
 
@@ -152,6 +152,163 @@ def exportar_sped(
         for ln in linhas:
             conteudo = obter_conteudo_final(ln) or ""
 
+            ##Bloco Frete
+            # ============================================================
+            # F100 - operações de frete / outras operações com crédito
+            # ============================================================
+            if "|F100|" in conteudo:
+
+                dados_f100 = conteudo.strip().strip("|").split("|")
+
+                # Layout mínimo esperado do F100
+                if len(dados_f100) < 19:
+                    logger.warning(
+                        "F100 ignorado | quantidade de campos inválida | linha=%s",
+                        conteudo,
+                    )
+                    continue
+
+                # --------------------------------------------------------
+                # Campos próprios do F100
+                # --------------------------------------------------------
+                ind_oper_f100 = str(dados_f100[1] or "").strip()
+
+                cst_pis_f100 = _cst_norm(dados_f100[6])
+                vl_bc_pis_f100 = dec_br(dados_f100[7])
+
+                cst_cofins_f100 = _cst_norm(dados_f100[10])
+                vl_bc_cofins_f100 = dec_br(dados_f100[11])
+
+                nat_f100 = str(dados_f100[14] or "").strip()
+
+                # --------------------------------------------------------
+                # Guard rails
+                # --------------------------------------------------------
+                if ind_oper_f100 != "0":
+                    continue
+
+                if cst_pis_f100 not in CST_CREDITO:
+                    continue
+
+                if vl_bc_pis_f100 <= 0:
+                    continue
+
+                if not nat_f100:
+                    logger.warning(
+                        "F100 ignorado | NAT_BC_CRED vazio | linha=%s",
+                        conteudo,
+                    )
+                    continue
+
+                # PIS e COFINS normalmente devem partir da mesma base
+                if abs(vl_bc_pis_f100 - vl_bc_cofins_f100) > Decimal("0.01"):
+                    logger.warning(
+                        "F100 BASE DIVERGENTE | pis=%s cofins=%s | linha=%s",
+                        vl_bc_pis_f100,
+                        vl_bc_cofins_f100,
+                        conteudo,
+                    )
+
+                base_f100 = vl_bc_pis_f100
+
+                # --------------------------------------------------------
+                # Base geral do Bloco M
+                # --------------------------------------------------------
+                base_por_nat_cst.setdefault(
+                    nat_f100,
+                    {},
+                )
+
+                base_por_nat_cst[nat_f100][cst_pis_f100] = (
+                        base_por_nat_cst[nat_f100].get(
+                            cst_pis_f100,
+                            Decimal("0.00"),
+                        )
+                        + base_f100
+                )
+
+                qtd_itens += 1
+
+                # --------------------------------------------------------
+                # DELTA
+                # Só F100 criado/alterado pelo nosso motor
+                # --------------------------------------------------------
+                revisao_id = int(
+                    getattr(ln, "revisao_id", 0) or 0
+                )
+
+                if revisao_id > 0:
+
+                    meta_ln = getattr(ln, "meta", None) or {}
+                    rev_json = getattr(ln, "revisao_json", None) or {}
+
+                    meta_rev = {}
+
+                    if isinstance(rev_json, dict):
+                        meta_rev = (
+                            rev_json.get("meta")
+                            if isinstance(rev_json.get("meta"), dict)
+                            else rev_json
+                        )
+
+                    cod_cred_delta = str(
+                        (
+                            meta_ln.get("cod_cred")
+                            if isinstance(meta_ln, dict)
+                            else None
+                        )
+                        or meta_rev.get("cod_cred")
+                        or meta_rev.get("tipo_credito_codigo")
+                        or ""
+                    ).strip()
+
+                    if not cod_cred_delta:
+                        raise RuntimeError(
+                            f"F100 DELTA sem COD_CRED | "
+                            f"revisao_id={revisao_id}"
+                        )
+
+                    base_delta_por_cod_cred_nat_cst.setdefault(
+                        cod_cred_delta,
+                        {},
+                    )
+
+                    base_delta_por_cod_cred_nat_cst[
+                        cod_cred_delta
+                    ].setdefault(
+                        nat_f100,
+                        {},
+                    )
+
+                    base_delta_por_cod_cred_nat_cst[
+                        cod_cred_delta
+                    ][nat_f100][cst_pis_f100] = (
+                            base_delta_por_cod_cred_nat_cst[
+                                cod_cred_delta
+                            ][nat_f100].get(
+                                cst_pis_f100,
+                                Decimal("0.00"),
+                            )
+                            + base_f100
+                    )
+
+                    qtd_itens_delta += 1
+
+                    logger.warning(
+                        "[MAPA_M_F100] "
+                        "cod_cred=%s nat=%s cst=%s "
+                        "base=%s revisao=%s",
+                        cod_cred_delta,
+                        nat_f100,
+                        cst_pis_f100,
+                        base_f100,
+                        revisao_id,
+                    )
+
+                # Já tratamos essa linha como F100.
+                # Não deixa cair no processamento C170 abaixo.
+                continue
+            ####
             if "|C170|" not in conteudo:
                 continue
 
@@ -362,14 +519,75 @@ def exportar_sped(
 
                 qtd_itens_delta += 1
 
-
         base_total = sum(
-            (base for mapa_cst in base_por_nat_cst.values() for base in mapa_cst.values()),
+            (
+                base
+                for mapa_cst in base_por_nat_cst.values()
+                for base in mapa_cst.values()
+            ),
             Decimal("0.00"),
-        ).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        credito_pis = (base_total * Decimal("0.0165")).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        credito_cofins = (base_total * Decimal("0.0760")).quantize(Decimal("0.01"), ROUND_HALF_UP)
-        credito_total_calc = (credito_pis + credito_cofins).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        ).quantize(
+            Decimal("0.01"),
+            ROUND_HALF_UP,
+        )
+
+        # ============================================================
+        # Créditos do relatório calculados por CST
+        # ============================================================
+
+        credito_pis = Decimal("0.00")
+        credito_cofins = Decimal("0.00")
+
+        for nat, mapa_cst in (base_por_nat_cst or {}).items():
+
+            for cst, base in (mapa_cst or {}).items():
+
+                cst_norm = _cst_norm(cst)
+                base_dec = Decimal(str(base or "0"))
+
+                if base_dec <= 0:
+                    continue
+
+                if cst_norm == "60":
+                    # PF
+                    aliq_pis = Decimal("0.012375")
+                    aliq_cofins = Decimal("0.057")
+
+                else:
+                    # fluxo já existente
+                    aliq_pis = Decimal(str(ALIQUOTA_PIS))
+                    aliq_cofins = Decimal(str(ALIQUOTA_COFINS))
+
+                credito_pis += (
+                        base_dec * aliq_pis
+                ).quantize(
+                    Decimal("0.01"),
+                    ROUND_HALF_UP,
+                )
+
+                credito_cofins += (
+                        base_dec * aliq_cofins
+                ).quantize(
+                    Decimal("0.01"),
+                    ROUND_HALF_UP,
+                )
+
+        credito_pis = credito_pis.quantize(
+            Decimal("0.01"),
+            ROUND_HALF_UP,
+        )
+
+        credito_cofins = credito_cofins.quantize(
+            Decimal("0.01"),
+            ROUND_HALF_UP,
+        )
+
+        credito_total_calc = (
+                credito_pis + credito_cofins
+        ).quantize(
+            Decimal("0.01"),
+            ROUND_HALF_UP,
+        )
         #Relatorio da exportacao
         relatorio_exportacao["c170_creditaveis"] = int(qtd_itens)
         relatorio_exportacao["pf_bloqueados"] = int(qtd_pf)
@@ -512,15 +730,31 @@ def exportar_sped(
             )
             try:
                 for nat, mapa in (base_por_nat_cst or {}).items():
+
                     for cst, base in (mapa or {}).items():
+
                         base_dec = Decimal(str(base or "0"))
-                        pis = _q2(base_dec * ALIQUOTA_PIS)
-                        cofins = _q2(base_dec * ALIQUOTA_COFINS)
+                        cst_norm = _cst_norm(cst)
+
+                        if cst_norm == "60":
+                            # PF
+                            aliq_pis = Decimal("0.012375")
+                            aliq_cofins = Decimal("0.057")
+
+                        else:
+                            # fluxo já existente
+                            aliq_pis = Decimal(str(ALIQUOTA_PIS))
+                            aliq_cofins = Decimal(str(ALIQUOTA_COFINS))
+
+                        pis = _q2(base_dec * aliq_pis)
+                        cofins = _q2(base_dec * aliq_cofins)
                         total = _q2(pis + cofins)
+
                         logger.info(
-                            "BLOCO_M_RESUMO | nat=%s cst=%s base=%s pis=%s cofins=%s total=%s",
+                            "BLOCO_M_RESUMO | "
+                            "nat=%s cst=%s base=%s pis=%s cofins=%s total=%s",
                             nat,
-                            cst,
+                            cst_norm,
                             base_dec,
                             pis,
                             cofins,

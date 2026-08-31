@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import EfdApontamento, EfdRevisao, NfIcmsItem
 from app.db.models.nf_icms_base import NfIcmsBase
 from app.db.models.item_fiscal_consolidado import ItemFiscalConsolidado
+from app.domain.workflow.corretiva_frete_v2 import _aplicar_corretiva_frete_v2
 from app.icms_ipi.icms_c170_utils import _criar_revisao_insert_c170_faltante_v2
 from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_nf_icms_na_efd, \
     _resolver_ancora_bloco_c_fim
@@ -35,17 +36,43 @@ def aplicar_corretiva_apontamento_v2(
     )
 
     if not apontamento:
-        return {"ok": False, "status": "erro", "msg": "Apontamento não encontrado"}
+        return {
+            "ok": False,
+            "status": "erro",
+            "msg": "Apontamento não encontrado",
+        }
 
     meta = apontamento.meta_json or {}
 
+    # ------------------------------------------------------------
+    # FRETE / F100
+    # ------------------------------------------------------------
+    tipo_corretiva_v2 = str(
+        meta.get("tipo_corretiva_v2") or ""
+    ).upper()
+
+    if tipo_corretiva_v2 == "INSERIR_F100_FRETE":
+        return _aplicar_corretiva_frete_v2(
+            db=db,
+            apontamento=apontamento,
+            meta=meta,
+            cache=cache,
+        )
+
+    # ------------------------------------------------------------
+    # Fluxo já existente de C100/C170
+    # ------------------------------------------------------------
     item_id = (
         apontamento.item_fiscal_consolidado_id
         or meta.get("item_fiscal_consolidado_id")
     )
 
     if not item_id:
-        return {"ok": False, "status": "erro", "msg": "Apontamento sem item fiscal consolidado"}
+        return {
+            "ok": False,
+            "status": "erro",
+            "msg": "Apontamento sem item fiscal consolidado",
+        }
 
     item = (
         db.query(ItemFiscalConsolidado)
@@ -54,7 +81,11 @@ def aplicar_corretiva_apontamento_v2(
     )
 
     if not item:
-        return {"ok": False, "status": "erro", "msg": "ItemFiscalConsolidado não encontrado"}
+        return {
+            "ok": False,
+            "status": "erro",
+            "msg": "ItemFiscalConsolidado não encontrado",
+        }
 
     status_cruzamento = str(
         meta.get("status_cruzamento")
@@ -71,7 +102,7 @@ def aplicar_corretiva_apontamento_v2(
             cache=cache,
         )
 
-    if status_cruzamento in {"MATCH"}:
+    if status_cruzamento == "MATCH":
         return _aplicar_corretiva_match_patch_c170_v2(
             db=db,
             apontamento=apontamento,
@@ -80,12 +111,13 @@ def aplicar_corretiva_apontamento_v2(
             cache=cache,
         )
 
-
-
     return {
         "ok": False,
         "status": "skip",
-        "msg": f"Status de cruzamento não suportado para corretiva V2: {status_cruzamento}",
+        "msg": (
+            "Status de cruzamento não suportado "
+            f"para corretiva V2: {status_cruzamento}"
+        ),
     }
 
 

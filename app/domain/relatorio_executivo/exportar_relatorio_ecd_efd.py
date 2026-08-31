@@ -12,6 +12,7 @@ from app.domain.relatorio_executivo.aba_base_por_natureza import criar_aba_base_
 from app.domain.relatorio_executivo.aba_diagnostico_efd import criar_aba_diagnostico_efd
 from app.domain.relatorio_executivo.aba_investigar import criar_aba_investigar
 from app.domain.relatorio_executivo.aba_oportunidades_c170 import criar_aba_oportunidades_c170
+from app.domain.relatorio_executivo.aba_oportunidades_f100 import criar_aba_oportunidades_f100
 from app.domain.relatorio_executivo.aba_resumo import criar_aba_resumo
 from app.domain.relatorio_executivo.aba_categorias import criar_abas_por_categoria
 from app.utils.excel import remover_aba_padrao, criar_aba_generica
@@ -39,6 +40,7 @@ def exportar_relatorio_executivo_ecd_efd_por_ctx(
     dominio = str(ctx.get("dominio") or "GERAL").upper()
 
     criar_aba_oportunidades_c170(wb, ctx)
+    criar_aba_oportunidades_f100(wb, ctx)
     criar_aba_base_por_categoria(wb, ctx)
     criar_aba_base_por_natureza(wb, ctx)
     criar_aba_diagnostico_efd(wb, ctx)

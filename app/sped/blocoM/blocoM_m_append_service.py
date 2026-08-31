@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Dict, List
-from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS
+from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS, ALIQUOTA_PIS_PRESUMIDO, ALIQUOTA_COFINS_PRESUMIDO
 from app.Legacy.fiscal.constants import REGS_M_RELEVANTES
 from app.sped.blocoM.m_utils import _clean_sped_line, _reg_of_line, _fmt_br, _q2, sanitizar_bloco_m, _split_m, \
     _somar_campo, _join_m, _dec_m,  _ensure_len
@@ -50,29 +50,56 @@ def gerar_linhas_m_credito_append(
         raise ValueError(
             "cod_cred obrigatório. O valor deve vir do enquadramento fiscal da V2."
         )
+
     linhas: List[str] = []
 
     for nat, por_cst in sorted((base_por_nat_cst or {}).items()):
         for cst, base in sorted((por_cst or {}).items()):
+
             base = _q2(Decimal(str(base or "0")))
+
             if base <= 0:
                 continue
 
-            pis = _q2(base * Decimal(str(ALIQUOTA_PIS)))
-            cofins = _q2(base * Decimal(str(ALIQUOTA_COFINS)))
+            # ------------------------------------------------
+            # Alíquotas conforme CST
+            # ------------------------------------------------
+            if str(cst).strip() == "60":
+                # PF
+                aliq_pis = Decimal(str(ALIQUOTA_PIS_PRESUMIDO))
+                aliq_cofins = Decimal(str(ALIQUOTA_COFINS_PRESUMIDO))
+
+                aliq_pis_txt = "1,2375"
+                aliq_cofins_txt = "5,7000"
+
+            else:
+                # Fluxo já existente
+                aliq_pis = Decimal(str(ALIQUOTA_PIS))
+                aliq_cofins = Decimal(str(ALIQUOTA_COFINS))
+
+                aliq_pis_txt = "1,6500"
+                aliq_cofins_txt = "7,6000"
+
+            # ------------------------------------------------
+            # Créditos
+            # ------------------------------------------------
+            pis = _q2(base * aliq_pis)
+            cofins = _q2(base * aliq_cofins)
 
             linhas.append(
-                f"|M100|{cod_cred}|0|{_fmt_br(base)}|1,6500|||{_fmt_br(pis)}|"
+                f"|M100|{cod_cred}|0|{_fmt_br(base)}|{aliq_pis_txt}|||{_fmt_br(pis)}|"
                 f"0|0|0|{_fmt_br(pis)}|1|0,00|{_fmt_br(pis)}|"
             )
+
             linhas.append(
                 f"|M105|{nat}|{cst}|{_fmt_br(base)}||{_fmt_br(base)}|{_fmt_br(base)}||||"
             )
 
             linhas.append(
-                f"|M500|{cod_cred}|0|{_fmt_br(base)}|7,6000|||{_fmt_br(cofins)}|"
+                f"|M500|{cod_cred}|0|{_fmt_br(base)}|{aliq_cofins_txt}|||{_fmt_br(cofins)}|"
                 f"0|0|0|{_fmt_br(cofins)}|1|0,00|{_fmt_br(cofins)}|"
             )
+
             linhas.append(
                 f"|M505|{nat}|{cst}|{_fmt_br(base)}||{_fmt_br(base)}|{_fmt_br(base)}||||"
             )

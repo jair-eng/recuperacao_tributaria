@@ -1,11 +1,13 @@
 from sqlalchemy.orm import Session
 
+from pathlib import Path
 from app.db.models import ItemFiscalConsolidado, EfdApontamento
 from app.domain.ecd.ecd_gap_service import montar_contexto_gap_ecd_efd
 from app.domain.fiscal.catalogo.bloqueio_classificacao_por_dominio import item_bloqueado_classificacao
 from app.domain.fiscal.catalogo.loader_catalogo_fiscal import carregar_catalogo_fiscal
 from app.domain.fiscal.diagnostico.diag_credito_nao_aproveitado import (
     diagnosticar_credito_nao_aproveitado,)
+from app.domain.fiscal.frete_transp.diagnostico_frete_f100 import diagnosticar_fretes_f100_ausentes
 from app.domain.fiscal.meta.meta_item_fiscal import (
     meta_from_item_fiscal)
 from app.utils.cached_utils import FiscalRuntimeCache
@@ -447,6 +449,64 @@ def gerar_apontamentos_por_contexto(
         versao_id,
         time.perf_counter() - t_loop,
     )
+
+    # --------------------------------------------------
+    # 5.1) DIAGNÓSTICO DE FRETES F100 AUSENTES
+    # --------------------------------------------------
+
+    dominio = None
+
+    if itens:
+        dominio = getattr(
+            itens[0],
+            "dominio",
+            None,
+        )
+
+    diagnosticos_frete = diagnosticar_fretes_f100_ausentes(
+        db=db,
+        versao_id=int(versao_id),
+        dominio=dominio,
+        periodo=periodo,
+        pasta_resultado=Path(
+            r"C:\Sped\LEITOR_CONTRATO\resultado"
+        ),
+    )
+
+    for diag_frete in diagnosticos_frete:
+        meta_frete = (
+                diag_frete.get("meta")
+                or {}
+        )
+
+        novos_apontamentos.append(
+            EfdApontamento(
+                versao_id=int(versao_id),
+
+                registro_id=None,
+
+                item_fiscal_consolidado_id=None,
+
+                tipo=diag_frete["tipo"],
+
+                codigo=diag_frete["codigo"],
+
+                descricao=diag_frete["descricao"],
+
+                impacto_financeiro=None,
+
+                prioridade=diag_frete.get(
+                    "prioridade"
+                ),
+
+                meta_json=json_safe(
+                    meta_frete
+                ),
+            )
+        )
+
+        total_diag += 1
+        stats["com_diag_frete"] += 1
 
     # --------------------------------------------------
     # 6) Bulk insert

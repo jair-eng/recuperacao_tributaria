@@ -88,41 +88,6 @@ def _resolver_ancora_bloco_c_fim(
 
     return None, 0, "INSERT_AFTER"
 
-def _resolver_ancora_bloco_c_fim(
-    db: Session,
-    *,
-    versao_origem_id: int,
-) -> tuple[Optional[int], int, str]:
-    reg_c990 = (
-        db.query(EfdRegistro)
-        .filter(
-            EfdRegistro.versao_id == int(versao_origem_id),
-            EfdRegistro.reg == "C990",
-        )
-        .order_by(EfdRegistro.linha.asc())
-        .first()
-    )
-
-    if reg_c990:
-        return int(reg_c990.id), int(getattr(reg_c990, "linha", 0) or 0), "INSERT_BEFORE"
-
-    # fallback antigo, se não houver C990
-    regs_c100 = (
-        db.query(EfdRegistro)
-        .filter(
-            EfdRegistro.versao_id == int(versao_origem_id),
-            EfdRegistro.reg == "C100",
-        )
-        .order_by(EfdRegistro.linha.asc())
-        .all()
-    )
-
-    if regs_c100:
-        ultimo = regs_c100[-1]
-        return int(ultimo.id), int(getattr(ultimo, "linha", 0) or 0), "INSERT_AFTER"
-
-    return None, 0, "INSERT_AFTER"
-
 def montar_linha_c100_de_icms(nf: NfIcmsBase) -> str:
     dt_doc_txt = nf.dt_doc.strftime("%d%m%Y") if getattr(nf, "dt_doc", None) else ""
     dt_es_txt = nf.dt_es.strftime("%d%m%Y") if getattr(nf, "dt_es", None) else dt_doc_txt

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Dict, List, Any, Optional, Iterable
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from app.config.settings import ALIQUOTA_PIS_PCT, ALIQUOTA_COFINS_PCT
 from app.Legacy.fiscal.contexto import dec_any
 from app.sped.blocoM.m_receita import (
@@ -145,9 +145,62 @@ def construir_bloco_m_v3(
             ) + base_extra
     ).quantize(Decimal("0.01"))
 
-    # créditos totais
-    credito_pis = (base_total * Decimal("0.0165")).quantize(Decimal("0.01"))
-    credito_cof = (base_total * Decimal("0.0760")).quantize(Decimal("0.01"))
+    # bases agrupadas por CST
+    base_por_cst: Dict[str, Decimal] = {}
+
+    for nat, mapa_cst in base_por_nat_cst_norm.items():
+        for cst, base in mapa_cst.items():
+            base_por_cst[cst] = (
+                    base_por_cst.get(cst, Decimal("0.00"))
+                    + base
+            )
+
+    credito_pis_por_cst: Dict[str, Decimal] = {}
+    credito_cof_por_cst: Dict[str, Decimal] = {}
+
+    for cst, base_cst in base_por_cst.items():
+
+        if cst == "60":
+            # PF
+            aliq_pis_cst = Decimal("0.012375")
+            aliq_cofins_cst = Decimal("0.057")
+        else:
+            # fluxo já existente
+            aliq_pis_cst = Decimal("0.0165")
+            aliq_cofins_cst = Decimal("0.076")
+
+        credito_pis_por_cst[cst] = (
+                base_cst * aliq_pis_cst
+        ).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+
+        credito_cof_por_cst[cst] = (
+                base_cst * aliq_cofins_cst
+        ).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+
+    credito_pis = sum(
+        credito_pis_por_cst.values(),
+        Decimal("0.00"),
+    ).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    credito_cof = sum(
+        credito_cof_por_cst.values(),
+        Decimal("0.00"),
+    ).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+    # # créditos totais
+    # credito_pis = (base_total * Decimal("0.0165")).quantize(Decimal("0.01"))
+    # credito_cof = (base_total * Decimal("0.0760")).quantize(Decimal("0.01"))
 
     # 1) receitas (calculo)
     receitas = extrair_receitas_c190(parsed)

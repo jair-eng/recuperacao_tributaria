@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+import re
 from app.sped.blocoC.c100_utils import patch_c100_totais_imposto
 from app.utils.sped import split_linha_sped, dec_sped_safe, reg_linha_sped
 
@@ -102,3 +103,40 @@ def normalizar_c100_c170_exportado(linhas: list[str]) -> list[str]:
     fechar_c100()
 
     return novas
+
+
+
+
+
+
+def normalizar_documento(documento):
+
+    if not documento:
+        return ""
+
+    return re.sub(
+        r"\D",
+        "",
+        str(documento)
+    )
+
+
+def normalizar_valor(valor):
+
+    if valor is None:
+        return Decimal("0.00")
+
+    valor = str(valor)
+
+    valor = valor.replace(".", "")
+    valor = valor.replace(",", ".")
+
+    return Decimal(valor)
+
+
+def normalizar_data(data):
+
+    if not data:
+        return ""
+
+    return data.replace("/", "")
