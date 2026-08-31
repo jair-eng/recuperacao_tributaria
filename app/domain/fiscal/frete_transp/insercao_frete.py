@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 from sqlalchemy.orm import Session
-from app.db.models import EfdRevisao
+from app.db.models import EfdRevisao, EfdRegistro
+from app.domain.fiscal.frete_transp.f100_participantes import montar_linha_0150_frete, gerar_novo_cod_part_frete, \
+    localizar_0150_por_documento_na_versao
+from app.domain.fiscal.frete_transp.mestres_fretes import localizar_0150_contratado
 from app.legacy_service.versao_overlay_service import (
     carregar_linhas_logicas_com_revisoes_e_insert,
 )
@@ -620,4 +623,356 @@ def inserir_f100s_do_f010_encadeados(
         "registro_id_fim_bloco": registro_id_alvo,
         "linha_fim_bloco": linha_ref_alvo,
         "revisao_fim_bloco_id": revisao_fim_bloco_id,
+    }
+
+
+
+def _linha_lista_para_sped(
+    linha: list,
+) -> str:
+
+    return (
+        "|"
+        + "|".join(
+            ""
+            if valor is None
+            else str(valor)
+            for valor in linha
+        )
+        + "|"
+    )
+
+
+def _criar_revisao_insert_0150_frete_v2(
+    db: Session,
+    *,
+    versao_origem_id: int,
+    registro_id_0140: int,
+    linha_0140: int,
+    linha_0150: list,
+    documento: str | None = None,
+    cod_part: str | None = None,
+    apontamento_id: int | None = None,
+) -> EfdRevisao:
+
+    # ---------------------------------------------------------
+    # 1. Valida a âncora
+    # ---------------------------------------------------------
+
+    registro_0140 = db.get(
+        EfdRegistro,
+        int(registro_id_0140),
+    )
+
+    if not registro_0140:
+        raise ValueError(
+            f"0140 âncora não encontrado: "
+            f"registro_id={registro_id_0140}"
+        )
+
+    if str(
+        getattr(registro_0140, "reg", "")
+        or ""
+    ).strip().upper() != "0140":
+
+        raise ValueError(
+            f"Registro usado como âncora não é 0140: "
+            f"registro_id={registro_id_0140} "
+            f"reg={getattr(registro_0140, 'reg', None)}"
+        )
+
+    # ---------------------------------------------------------
+    # 2. Valida a linha que será inserida
+    # ---------------------------------------------------------
+
+    if not linha_0150:
+        raise ValueError(
+            "Linha 0150 vazia."
+        )
+
+    if str(
+        linha_0150[0] or ""
+    ).strip().upper() != "0150":
+
+        raise ValueError(
+            f"Linha informada não é 0150: "
+            f"{linha_0150}"
+        )
+
+    # ---------------------------------------------------------
+    # 3. Converte lista para linha SPED
+    # ---------------------------------------------------------
+
+    linha_nova = _linha_lista_para_sped(
+        linha_0150
+    )
+
+    # ---------------------------------------------------------
+    # 4. Cria revisão INSERT_AFTER
+    #
+    # ÂNCORA:
+    # registro_id do 0140 original
+    #
+    # RESULTADO:
+    # 0140
+    # 0150 <- novo
+    # ...
+    # ---------------------------------------------------------
+
+    rv = EfdRevisao(
+        versao_origem_id=int(
+            versao_origem_id
+        ),
+
+        versao_revisada_id=None,
+
+        registro_id=int(
+            registro_id_0140
+        ),
+
+        reg="0150",
+
+        acao="INSERT_AFTER",
+
+        revisao_json={
+            "linha_nova": linha_nova,
+
+            "linha_referencia": int(
+                linha_0140 or 0
+            ),
+
+            "meta": {
+                "origem": "FRETE_TRANSP",
+                "tipo": "INSERIR_0150_FRETE",
+                "cod_part": cod_part,
+                "documento": documento,
+                "registro_id_0140": int(
+                    registro_id_0140
+                ),
+            },
+        },
+
+        motivo_codigo="0150_FRETE_AUSENTE_V2",
+
+        apontamento_id=apontamento_id,
+    )
+
+    db.add(rv)
+
+    # Precisamos do ID da revisão para
+    # localizar a linha criada no overlay.
+    db.flush()
+
+    return rv
+
+
+
+def garantir_0150_frete(
+    db: Session,
+    *,
+    versao_id: int,
+    contexto_0140: dict,
+    documento: str,
+    nome: str | None = None,
+    tipo_pessoa: str | None = None,
+    cod_pais: str = "1058",
+    ie: str | None = None,
+    cod_mun: str | None = None,
+    suframa: str | None = None,
+    logradouro: str | None = None,
+    numero: str | None = None,
+    complemento: str | None = None,
+    bairro: str | None = None,
+    apontamento_id: int | None = None,
+) -> dict:
+
+    if not contexto_0140:
+        raise ValueError(
+            "Contexto 0140 não informado."
+        )
+
+    registro_id_0140 = contexto_0140.get(
+        "registro_id"
+    )
+
+    linha_0140 = contexto_0140.get(
+        "linha_inicio"
+    )
+
+    if not registro_id_0140:
+        raise ValueError(
+            "0140 alvo sem registro_id."
+        )
+
+    # ---------------------------------------------------------
+    # 1. Procura primeiro dentro do 0140 alvo
+    # ---------------------------------------------------------
+
+    participante_local = localizar_0150_contratado(
+        db,
+        versao_id=versao_id,
+        contexto_0140=contexto_0140,
+        documento=documento,
+    )
+
+    if participante_local:
+
+        return {
+            "ok": True,
+            "cod_part": participante_local["cod_part"],
+            "criado": False,
+            "origem": "0150_EXISTENTE_NO_0140",
+            "registro_id_0150": participante_local["registro_id"],
+            "revisao_id": None,
+            "registro_id_0140": int(registro_id_0140),
+        }
+
+    # ---------------------------------------------------------
+    # 2. Não existe nesse 0140.
+    # Procura na versão inteira.
+    # ---------------------------------------------------------
+
+    participante_global = (
+        localizar_0150_por_documento_na_versao(
+            db,
+            versao_id=versao_id,
+            documento=documento,
+        )
+    )
+
+    if participante_global:
+
+        cod_part = participante_global["cod_part"]
+
+        nome_final = (
+            participante_global.get("nome")
+            or nome
+        )
+
+        tipo_pessoa_final = (
+            participante_global.get("tipo_pessoa")
+            or tipo_pessoa
+        )
+
+        cod_pais_final = (
+            participante_global.get("cod_pais")
+            or cod_pais
+            or "1058"
+        )
+
+        ie_final = (
+            participante_global.get("ie")
+        )
+
+        cod_mun_final = (
+            participante_global.get("cod_mun")
+        )
+
+        suframa_final = (
+            participante_global.get("suframa")
+        )
+
+        logradouro_final = (
+            participante_global.get("logradouro")
+        )
+
+        numero_final = (
+            participante_global.get("numero")
+        )
+
+        complemento_final = (
+            participante_global.get("complemento")
+        )
+
+        bairro_final = (
+            participante_global.get("bairro")
+        )
+
+        origem = "0150_REUTILIZADO_DA_VERSAO"
+
+    else:
+
+        # -----------------------------------------------------
+        # 3. Participante completamente novo
+        # -----------------------------------------------------
+
+        cod_part = gerar_novo_cod_part_frete(
+            db,
+            versao_id=versao_id,
+        )
+
+        nome_final = nome
+        tipo_pessoa_final = tipo_pessoa
+        cod_pais_final = cod_pais or "1058"
+
+        ie_final = ie
+        cod_mun_final = cod_mun
+        suframa_final = suframa
+        logradouro_final = logradouro
+        numero_final = numero
+        complemento_final = complemento
+        bairro_final = bairro
+
+        origem = "0150_NOVO"
+
+    # ---------------------------------------------------------
+    # 4. Validações mínimas
+    # ---------------------------------------------------------
+
+    if not nome_final:
+        raise ValueError(
+            f"Nome ausente para criação do 0150 "
+            f"do documento {documento}."
+        )
+
+    if not tipo_pessoa_final:
+        raise ValueError(
+            f"Tipo de pessoa ausente para criação do 0150 "
+            f"do documento {documento}."
+        )
+
+    # ---------------------------------------------------------
+    # 5. Monta linha 0150
+    # ---------------------------------------------------------
+
+    linha_0150 = montar_linha_0150_frete(
+        cod_part=cod_part,
+        nome=nome_final,
+        documento=documento,
+        tipo_pessoa=tipo_pessoa_final,
+        cod_pais=cod_pais_final,
+        ie=ie_final,
+        cod_mun=cod_mun_final,
+        suframa=suframa_final,
+        logradouro=logradouro_final,
+        numero=numero_final,
+        complemento=complemento_final,
+        bairro=bairro_final,
+    )
+
+    # ---------------------------------------------------------
+    # 6. Cria revisão INSERT_AFTER no 0140
+    # ---------------------------------------------------------
+
+    revisao = _criar_revisao_insert_0150_frete_v2(
+        db,
+        versao_origem_id=versao_id,
+        registro_id_0140=int(registro_id_0140),
+        linha_0140=int(linha_0140 or 0),
+        linha_0150=linha_0150,
+        documento=documento,
+        cod_part=cod_part,
+        apontamento_id=apontamento_id,
+    )
+
+    return {
+        "ok": True,
+        "cod_part": cod_part,
+        "criado": True,
+        "origem": origem,
+        "registro_id_0150": None,
+        "revisao_id": int(revisao.id),
+        "registro_id_0140": int(registro_id_0140),
+        "linha_0150": linha_0150,
+        "participante_origem": participante_global,
     }

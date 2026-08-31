@@ -4,7 +4,7 @@ from app.db.models import EfdApontamento, EfdVersao, NfIcmsBase, NfIcmsItem, Ite
 from typing import List
 import logging
 
-from app.domain.fiscal.frete_transp.insercao_frete import inserir_f100s_do_f010_encadeados
+from app.domain.fiscal.frete_transp.insercao_frete import inserir_f100s_do_f010_encadeados, garantir_0150_frete
 from app.domain.workflow.corretiva_v2_service import aplicar_corretiva_apontamento_v2
 from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_nf_icms_na_efd, \
     _resolver_ancora_bloco_c_fim, inserir_notas_icms_ausentes_na_efd_v2
@@ -152,17 +152,166 @@ class ApontamentoService:
                     continue
 
                 fretes = []
-
+                erros_montagem_grupo = 0
                 # ----------------------------------------------------
                 # Monta todos os F100 pertencentes ao mesmo F010
                 # ----------------------------------------------------
                 for ap in apontamentos_f010:
                     meta = ap.meta_json or {}
 
-                    participante = meta.get("participante") or {}
                     contrato = meta.get("contrato") or {}
+                    contratado = contrato.get("contratado") or {}
                     frete_meta = contrato.get("frete") or {}
                     enq = meta.get("enquadramento") or {}
+
+                    estabelecimento_0140 = (
+                            meta.get("estabelecimento_0140")
+                            or {}
+                    )
+
+                    registro_id_0140 = (
+                        estabelecimento_0140.get(
+                            "registro_id_0140"
+                        )
+                    )
+
+                    linha_inicio_0140 = (
+                        estabelecimento_0140.get(
+                            "linha_inicio"
+                        )
+                    )
+
+                    linha_fim_0140 = (
+                        estabelecimento_0140.get(
+                            "linha_fim"
+                        )
+                    )
+
+                    if not registro_id_0140:
+                        total_v2_erros += 1
+                        erros_montagem_grupo += 1
+
+                        logger.warning(
+                            "[RESOLVER_TODOS][FRETE] ERRO | "
+                            "apontamento_id=%s | 0140 sem registro_id",
+                            ap.id,
+                        )
+
+                        continue
+
+                    documento_contratado = (
+                        contratado.get("documento")
+                    )
+
+                    nome_contratado = (
+                        contratado.get("nome")
+                    )
+
+                    tipo_pessoa = (
+                        meta.get("tipo_pessoa")
+                    )
+
+                    if not documento_contratado:
+                        total_v2_erros += 1
+                        erros_montagem_grupo += 1
+
+                        logger.warning(
+                            "[RESOLVER_TODOS][FRETE] ERRO | "
+                            "apontamento_id=%s | contratado sem documento",
+                            ap.id,
+                        )
+
+                        continue
+
+                    contexto_0140 = {
+                        "existe": bool(
+                            estabelecimento_0140.get("existe")
+                        ),
+
+                        "registro_id": int(
+                            registro_id_0140
+                        ),
+
+                        "linha_inicio": int(
+                            linha_inicio_0140 or 0
+                        ),
+
+                        "linha_fim": int(
+                            linha_fim_0140 or 0
+                        ),
+
+                        "cod_est": (
+                            estabelecimento_0140.get(
+                                "cod_est"
+                            )
+                        ),
+
+                        "cnpj": (
+                            estabelecimento_0140.get(
+                                "cnpj"
+                            )
+                        ),
+                    }
+
+                    resultado_participante = (
+                        garantir_0150_frete(
+                            db,
+
+                            versao_id=versao_id,
+
+                            contexto_0140=contexto_0140,
+
+                            documento=documento_contratado,
+
+                            nome=nome_contratado,
+
+                            tipo_pessoa=tipo_pessoa,
+
+                            ie=contratado.get("ie"),
+
+                            cod_mun=contratado.get(
+                                "municipio"
+                            ),
+
+                            logradouro=contratado.get(
+                                "logradouro"
+                            ),
+
+                            numero=contratado.get(
+                                "numero"
+                            ),
+
+                            complemento=contratado.get(
+                                "complemento"
+                            ),
+
+                            bairro=contratado.get(
+                                "bairro"
+                            ),
+
+                            apontamento_id=int(
+                                ap.id
+                            ),
+                        )
+                    )
+
+                    cod_part = (
+                        resultado_participante.get(
+                            "cod_part"
+                        )
+                    )
+
+                    if not cod_part:
+                        total_v2_erros += 1
+                        erros_montagem_grupo += 1
+
+                        logger.warning(
+                            "[RESOLVER_TODOS][FRETE] ERRO | "
+                            "apontamento_id=%s | COD_PART não resolvido",
+                            ap.id,
+                        )
+
+                        continue
 
                     numero_f100 = (
                             meta.get("numero_f100")
@@ -175,7 +324,7 @@ class ApontamentoService:
                         ).strip(),
 
                         "cod_part": str(
-                            participante.get("cod_part") or ""
+                            cod_part
                         ).strip(),
 
                         "data": frete_meta.get("data"),
@@ -206,6 +355,7 @@ class ApontamentoService:
                                 or enq.get("base_credito_codigo")
                                 or meta.get("nat_bc_cred")
                         ),
+
                         "cod_cred": (
                                 meta.get("cod_cred")
                                 or meta.get("tipo_credito_codigo")
@@ -218,11 +368,35 @@ class ApontamentoService:
                         "cod_cta": meta.get("cod_cta"),
                         "periodo": meta.get("periodo"),
 
-                        # Dado auxiliar.
-                        # Depois podemos usar para vincular cada revisão
-                        # ao apontamento correspondente.
                         "_apontamento_id": int(ap.id),
+
+                        "_0150_criado": bool(
+                            resultado_participante.get(
+                                "criado"
+                            )
+                        ),
+
+                        "_0150_origem": (
+                            resultado_participante.get(
+                                "origem"
+                            )
+                        ),
+
+                        "_revisao_0150_id": (
+                            resultado_participante.get(
+                                "revisao_id"
+                            )
+                        ),
                     })
+                if erros_montagem_grupo > 0:
+                    logger.warning(
+                        "[RESOLVER_TODOS][FRETE] grupo abortado | "
+                        "registro_id_f010=%s | erros_montagem=%s",
+                        registro_id_f010,
+                        erros_montagem_grupo,
+                    )
+
+                    continue
                 # ----------------------------------------------------
                 # Ordena os F100 antes de inserir
                 # ----------------------------------------------------

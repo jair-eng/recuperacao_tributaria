@@ -643,3 +643,4 @@ def localizar_f010_por_cnpj(
         ),
         "registro": registro_encontrado,
     }
+
