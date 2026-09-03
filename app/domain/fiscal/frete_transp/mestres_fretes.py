@@ -644,3 +644,27 @@ def localizar_f010_por_cnpj(
         "registro": registro_encontrado,
     }
 
+
+
+def recalcular_f990_bloco_f(linhas: list[str]) -> list[str]:
+    indice_f001 = None
+    indice_f990 = None
+
+    for i, linha in enumerate(linhas):
+        reg = (linha or "").strip()
+
+        if reg.startswith("|F001|"):
+            indice_f001 = i
+
+        elif reg.startswith("|F990|"):
+            indice_f990 = i
+            break
+
+    if indice_f001 is None or indice_f990 is None:
+        return linhas
+
+    qtd_linhas = indice_f990 - indice_f001 + 1
+
+    linhas[indice_f990] = f"|F990|{qtd_linhas}|"
+
+    return linhas

@@ -6,6 +6,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from app.config.settings import ALIQUOTA_PIS, ALIQUOTA_COFINS  # 0.0165 / 0.0760
 from app.Legacy.fiscal.constants import DOM_GERAL
+from app.domain.fiscal.frete_transp.mestres_fretes import recalcular_f990_bloco_f
 from app.services.dominio_service import resolver_dominio_por_versao
 from app.sped.blocoM.blocoM_m_append_service import bloco_m_tem_valor_relevante, gerar_linhas_m_credito_append, \
     inserir_creditos_no_bloco_m_original
@@ -156,7 +157,7 @@ def exportar_sped(
             # ============================================================
             # F100 - operações de frete / outras operações com crédito
             # ============================================================
-            if "|F100|" in conteudo:
+            if conteudo.lstrip().startswith("|F100|"):
 
                 dados_f100 = conteudo.strip().strip("|").split("|")
 
@@ -250,6 +251,31 @@ def exportar_sped(
                             if isinstance(rev_json.get("meta"), dict)
                             else rev_json
                         )
+                    ##testar
+                    cod_cred_bloco = ""
+
+                    if (
+                            isinstance(rev_json, dict)
+                            and rev_json.get("tipo_bloco") == "F010_F100_V2"
+                    ):
+                        for item_meta in (
+                                rev_json.get("metadados_f100")
+                                or []
+                        ):
+                            if not isinstance(item_meta, dict):
+                                continue
+
+                            if str(
+                                    item_meta.get("linha")
+                                    or ""
+                            ).strip() == str(conteudo).strip():
+                                cod_cred_bloco = str(
+                                    item_meta.get("cod_cred")
+                                    or ""
+                                ).strip()
+
+                                break
+
 
                     cod_cred_delta = str(
                         (
@@ -257,6 +283,7 @@ def exportar_sped(
                             if isinstance(meta_ln, dict)
                             else None
                         )
+                        or cod_cred_bloco
                         or meta_rev.get("cod_cred")
                         or meta_rev.get("tipo_credito_codigo")
                         or ""
@@ -667,6 +694,7 @@ def exportar_sped(
             logger.info("0900 ignorado | original não possui 0900")
 
         conteudo_sem_m = recalcular_0990_bloco0(conteudo_sem_m)
+        conteudo_sem_m = recalcular_f990_bloco_f(conteudo_sem_m)
 
         # Parse do conteúdo final (já com 0900 se inserido)
         parsed = parse_sped_from_lines(conteudo_sem_m)

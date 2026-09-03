@@ -5,6 +5,7 @@ from typing import List
 import logging
 
 from app.domain.fiscal.frete_transp.insercao_frete import inserir_f100s_do_f010_encadeados, garantir_0150_frete
+from app.domain.workflow.corretiva_frete_v2 import resolver_f010_f100_ausentes_em_lote
 from app.domain.workflow.corretiva_v2_service import aplicar_corretiva_apontamento_v2
 from app.legacy_icms_ipi.icms_ipi_insercao_notas_service import _inserir_bloco_nf_icms_na_efd, \
     _resolver_ancora_bloco_c_fim, inserir_notas_icms_ausentes_na_efd_v2
@@ -77,12 +78,46 @@ class ApontamentoService:
                 .all()
             )
 
+            #########Testar
+
+            res_f010_lote = resolver_f010_f100_ausentes_em_lote(
+                db=db,
+                versao_id=versao_id,
+                apontamentos=aps_frete,
+            )
+
+            ids_processados_f010 = set(
+                res_f010_lote.get("ids_processados")
+                or []
+            )
+
+            ids_processados_lote.update(
+                ids_processados_f010
+            )
+
+            total_v2_corretivas += len(
+                ids_processados_f010
+            )
+
+            total_v2_skips += int(
+                res_f010_lote.get("skips")
+                or 0
+            )
+
+            total_v2_erros += int(
+                res_f010_lote.get("erros")
+                or 0
+            )
+
             # --------------------------------------------------------
             # Agrupa os apontamentos pelo mesmo F010
             # --------------------------------------------------------
             grupos_f010: dict[int, list[EfdApontamento]] = {}
 
             for ap in aps_frete:
+
+                if ap.id in ids_processados_f010:
+                    continue
 
                 meta = ap.meta_json or {}
 

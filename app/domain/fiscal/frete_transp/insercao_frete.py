@@ -11,11 +11,8 @@ from app.legacy_service.versao_overlay_service import (
 )
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-
 import logging
-
 from app.utils.numbers import to_decimal
-
 logger = logging.getLogger(__name__)
 
 

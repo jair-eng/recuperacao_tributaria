@@ -2,8 +2,483 @@ from app.db.models import EfdApontamento
 
 from sqlalchemy.orm import Session
 from typing import Any, Dict, Optional
-
 from app.domain.fiscal.frete_transp.insercao_frete import inserir_f100s_do_f010_encadeados, garantir_0150_frete
+from app.domain.fiscal.frete_transp.insercao_frete_f010_faltante import inserir_blocos_f010_f100_ausentes
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def resolver_f010_f100_ausentes_em_lote(
+    db: Session,
+    *,
+    versao_id: int,
+    apontamentos: list[EfdApontamento],
+) -> dict:
+    """
+    Agrupa apontamentos de frete pelo estabelecimento contratante
+    quando o F010 ainda não existe.
+
+    Um CNPJ gera:
+
+        1 F010
+        N F100
+    """
+
+    grupos: dict[str, dict] = {}
+
+    skips = 0
+    erros = 0
+
+    # =========================================================
+    # 1. AGRUPAMENTO
+    # =========================================================
+
+    for ap in apontamentos:
+
+        meta = (
+            ap.meta_json
+            or {}
+        )
+
+        if (
+            meta.get("tipo_corretiva_v2")
+            != "INSERIR_F100_FRETE"
+        ):
+            continue
+
+        # Este resolvedor cuida apenas do F010 ausente.
+        if not bool(
+            meta.get("criar_f010")
+        ):
+            continue
+
+        # 0140 precisa existir nesta primeira etapa.
+        # Cenário de criação do 0140 ficará para outro fluxo.
+        estabelecimento_0140 = (
+            meta.get("estabelecimento_0140")
+            or {}
+        )
+
+        if not bool(
+            estabelecimento_0140.get("existe")
+        ):
+            skips += 1
+            continue
+
+        estabelecimento_f010 = (
+            meta.get("estabelecimento_f010")
+            or {}
+        )
+
+        # Proteção:
+        # diagnóstica disse criar_f010,
+        # mas aparentemente já há F010.
+        if bool(
+            estabelecimento_f010.get("existe")
+        ):
+            skips += 1
+            continue
+
+        cnpj = "".join(
+            caractere
+            for caractere in str(
+                estabelecimento_0140.get("cnpj")
+                or estabelecimento_f010.get("cnpj")
+                or ""
+            )
+            if caractere.isdigit()
+        )
+
+        if len(cnpj) != 14:
+            erros += 1
+            continue
+
+        grupos.setdefault(
+            cnpj,
+            {
+                "cnpj_estabelecimento":
+                    cnpj,
+
+                "contexto_0140":
+                    estabelecimento_0140,
+
+                "itens_ctx": [],
+            },
+        )
+
+        grupos[cnpj][
+            "itens_ctx"
+        ].append({
+            "ap":
+                ap,
+
+            "meta":
+                meta,
+        })
+
+    # =========================================================
+    # 2. PREPARAÇÃO DOS GRUPOS ELEGÍVEIS
+    # =========================================================
+
+    grupos_elegiveis = []
+
+    for cnpj, grupo in grupos.items():
+
+        itens_ctx = (
+            grupo["itens_ctx"]
+        )
+
+        # Ordenação determinística
+        itens_ctx = sorted(
+            itens_ctx,
+            key=lambda x: (
+                str(
+                    (
+                            (
+                                    x["meta"].get("contrato")
+                                    or {}
+                            ).get("frete")
+                            or {}
+                    ).get("data")
+                    or ""
+                ),
+                str(
+                    x["meta"].get("numero_f100")
+                    or ""
+                ),
+                int(
+                    getattr(
+                        x["ap"],
+                        "id",
+                        0,
+                    )
+                    or 0
+                ),
+            ),
+        )
+
+        fretes = []
+        apontamento_ids = []
+
+        grupo_valido = True
+
+        for item_ctx in itens_ctx:
+
+            ap = item_ctx["ap"]
+            meta = item_ctx["meta"]
+
+            contrato = (
+                    meta.get("contrato")
+                    or {}
+            )
+            frete_meta = (
+                    contrato.get("frete")
+                    or {}
+            )
+
+            contratado = (
+                    contrato.get("contratado")
+                    or {}
+            )
+
+            estabelecimento_0140 = (
+                    meta.get("estabelecimento_0140")
+                    or {}
+            )
+
+            registro_id_0140 = (
+                estabelecimento_0140.get(
+                    "registro_id_0140"
+                )
+            )
+
+            if not registro_id_0140:
+                grupo_valido = False
+                erros += 1
+                break
+
+            documento_contratado = (
+                contratado.get("documento")
+            )
+
+            nome_contratado = (
+                contratado.get("nome")
+            )
+
+            tipo_pessoa = (
+                meta.get("tipo_pessoa")
+            )
+
+            if not documento_contratado:
+                grupo_valido = False
+                erros += 1
+                break
+
+            contexto_0140 = {
+                "existe": True,
+
+                "registro_id": int(
+                    registro_id_0140
+                ),
+
+                "linha_inicio": int(
+                    estabelecimento_0140.get(
+                        "linha_inicio"
+                    )
+                    or 0
+                ),
+
+                "linha_fim": int(
+                    estabelecimento_0140.get(
+                        "linha_fim"
+                    )
+                    or 0
+                ),
+
+                "cod_est": (
+                    estabelecimento_0140.get(
+                        "cod_est"
+                    )
+                ),
+
+                "cnpj": (
+                    estabelecimento_0140.get(
+                        "cnpj"
+                    )
+                ),
+            }
+
+            resultado_participante = garantir_0150_frete(
+                db,
+
+                versao_id=versao_id,
+
+                contexto_0140=contexto_0140,
+
+                documento=documento_contratado,
+
+                nome=nome_contratado,
+
+                tipo_pessoa=tipo_pessoa,
+
+                ie=contratado.get("ie"),
+
+                cod_mun=contratado.get(
+                    "municipio"
+                ),
+
+                logradouro=contratado.get(
+                    "logradouro"
+                ),
+
+                numero=contratado.get(
+                    "numero"
+                ),
+
+                complemento=contratado.get(
+                    "complemento"
+                ),
+
+                bairro=contratado.get(
+                    "bairro"
+                ),
+
+                apontamento_id=int(
+                    ap.id
+                ),
+            )
+
+            cod_part = (
+                resultado_participante.get(
+                    "cod_part"
+                )
+            )
+
+            if not cod_part:
+                grupo_valido = False
+                erros += 1
+                break
+
+
+
+            frete = {
+                "numero_f100":
+                    meta.get("numero_f100"),
+
+                "periodo":
+                    meta.get("periodo"),
+
+                "cod_part":
+                    cod_part,
+
+                "data":
+                    frete_meta.get("data"),
+
+                "valor_frete":
+                    frete_meta.get("valor_frete"),
+
+                "cst_pis":
+                    meta.get(
+                        "cst_pis_destino"
+                    ),
+
+                "cst_cofins":
+                    meta.get(
+                        "cst_cofins_destino"
+                    ),
+
+                "aliq_pis":
+                    meta.get("aliq_pis"),
+
+                "aliq_cofins":
+                    meta.get("aliq_cofins"),
+
+                "nat_bc_cred":
+                    meta.get("nat_bc_cred"),
+
+                "cod_cred":
+                    meta.get("cod_cred"),
+
+                "cod_cta":
+                    meta.get("cod_cta"),
+            }
+
+            fretes.append(
+                frete
+            )
+
+            apontamento_ids.append(
+                int(ap.id)
+            )
+
+        if not grupo_valido:
+            continue
+
+        if not fretes:
+            continue
+
+        grupos_elegiveis.append({
+            "cnpj_estabelecimento":
+                cnpj,
+
+            "contexto_0140":
+                grupo["contexto_0140"],
+
+            "fretes":
+                fretes,
+
+            "apontamento_ids":
+                apontamento_ids,
+
+            "apontamentos": [
+                x["ap"]
+                for x in itens_ctx
+            ],
+        })
+
+    # =========================================================
+    # 3. INSERÇÃO
+    # =========================================================
+
+    ids_processados = []
+
+    total_f010 = 0
+    total_f100 = 0
+
+    if grupos_elegiveis:
+
+        res_lote = (
+            inserir_blocos_f010_f100_ausentes(
+                db,
+                versao_origem_id=versao_id,
+                grupos_elegiveis=grupos_elegiveis,
+            )
+        )
+
+        total_f010 = int(
+            res_lote.get(
+                "total_f010_insert"
+            )
+            or 0
+        )
+
+        total_f100 = int(
+            res_lote.get(
+                "total_f100_insert"
+            )
+            or 0
+        )
+
+        # -----------------------------------------------------
+        # Só depois da inserção:
+        # marca os apontamentos do grupo como resolvidos
+        # -----------------------------------------------------
+
+        esperado_f010 = len(
+            grupos_elegiveis
+        )
+
+        esperado_f100 = sum(
+            len(
+                grupo.get("fretes")
+                or []
+            )
+            for grupo in grupos_elegiveis
+        )
+
+        if (
+                total_f010 != esperado_f010
+                or total_f100 != esperado_f100
+        ):
+            erros += 1
+
+            logger.warning(
+                "[F010_F100_LOTE] quantidade divergente | "
+                "F010 esperado=%s inserido=%s | "
+                "F100 esperado=%s inserido=%s",
+                esperado_f010,
+                total_f010,
+                esperado_f100,
+                total_f100,
+            )
+
+        else:
+            for grupo in grupos_elegiveis:
+
+                for ap in (
+                        grupo.get("apontamentos")
+                        or []
+                ):
+                    ap.resolvido = True
+                    db.add(ap)
+
+                    ids_processados.append(
+                        int(ap.id)
+                    )
+
+        db.flush()
+
+    return {
+        "ids_processados":
+            ids_processados,
+
+        "grupos_processados":
+            len(grupos_elegiveis),
+
+        "f010_inseridos":
+            total_f010,
+
+        "f100_inseridos":
+            total_f100,
+
+        "skips":
+            skips,
+
+        "erros":
+            erros,
+    }
+
 
 
 def _aplicar_corretiva_frete_v2(
